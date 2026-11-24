@@ -1265,7 +1265,12 @@ document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.ke
 
 // Webアプリとして置いたとき：オフラインで動くようにする（Claudeのページやファイルで開いたときは何もしない）
 if (location.protocol === "https:" && !window.claude && "serviceWorker" in navigator) {
-  try { navigator.serviceWorker.register("sw.js").catch(() => {}); } catch (e) {}
+  try {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+    // 新しい版の仕組みに入れ替わったら、1回だけ読み直して新しい画面にする
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (reloaded) return; reloaded = true; saveNow(); location.reload(); });
+  } catch (e) {}
 }
 function newDefault() { addMap(blankMap("新しいマップ1", 14, 12, ".")); }
 resizeCanvas();
