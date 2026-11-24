@@ -385,13 +385,14 @@ function parseMap(text) {
       if (isBuiltIn(mark)) { warns.push(`${lineNo}行目：「${mark}」は配置で決まった意味がある文字なので凡例には使えません`); continue; }
       if (is(section, SECS.units)) {
         if (!toks.length) continue;
-        const u = { mark, unit: toks[0], level: 0, boss: false, hold: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, extra: [] };
+        const u = { mark, unit: toks[0], level: 0, boss: false, hold: false, wait: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, squad: "", extra: [] };
         for (const t of toks.slice(1)) {
           const low = half(t).toLowerCase();
           if (/^lv\d+$/.test(low)) u.level = parseInt(low.slice(2), 10);
           else if (t.startsWith("レベル") && !isNaN(parseInt(half(t.slice(3)), 10))) u.level = parseInt(half(t.slice(3)), 10);
           else if (t === "ボス") u.boss = true;
           else if (t === "動かない") u.hold = true;
+          else if (t === "待つ" || t === "待ち伏せ") u.wait = true;
           else if (t === "味方" || t === "ゲスト") u.ally = true;
           else {
             const kv = splitKey(t);
@@ -402,6 +403,7 @@ function parseMap(text) {
             else if (k === "スキル") u.skills = splitList(v).join(",");
             else if (k === "落とす" || k === "ドロップ") u.drop = v;
             else if (k === "お金") u.gold = toInt(stripGold(v), -1);
+            else if (k === "部隊") u.squad = v;
             else { u.extra.push(t); warns.push(`${lineNo}行目：「${k}」は知らない項目です`); }
           }
         }
@@ -436,6 +438,7 @@ function unitLine(u) {
   if (u.level > 0) p.push(`Lv${u.level}`);
   if (u.boss) p.push("ボス");
   if (u.hold) p.push("動かない");
+  if (u.wait) p.push("待つ");
   if (u.ally) p.push("味方");
   if (u.name) p.push(`名前=${u.name.replace(/\s/g, "")}`);
   if (u.cls) p.push(`職業=${u.cls.replace(/\s/g, "")}`);
@@ -443,6 +446,7 @@ function unitLine(u) {
   if (u.skills) p.push(`スキル=${splitList(u.skills).join(",")}`);
   if (u.drop) p.push(`落とす=${u.drop.replace(/\s/g, "")}`);
   if (u.gold >= 0) p.push(`お金=${u.gold}`);
+  if (u.squad) p.push(`部隊=${u.squad.replace(/\s/g, "")}`);
   for (const e of u.extra || []) p.push(e);
   return p.join(" ");
 }
@@ -887,7 +891,7 @@ function renderLegend() {
     for (const u of map.units) $("lgU").appendChild(legendCard(u.mark, unitLine(u).slice(3), () => editUnit(u)));
     for (const f of map.features) $("lgF").appendChild(legendCard(f.mark, f.feature, () => editFeature(f)));
     for (const c of map.chests) $("lgC").appendChild(legendCard(c.mark, chestLine(c).slice(2), () => editChest(c)));
-    $("addU").onclick = () => { pushUndo(); const u = { mark: nextMark(usedPlaceMarks()), unit: PAL.units[0] || "山賊", level: 0, boss: false, hold: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, extra: [] }; map.units.push(u); sel.place = u.mark; editUnit(u); };
+    $("addU").onclick = () => { pushUndo(); const u = { mark: nextMark(usedPlaceMarks()), unit: PAL.units[0] || "山賊", level: 0, boss: false, hold: false, wait: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, squad: "", extra: [] }; map.units.push(u); sel.place = u.mark; editUnit(u); };
     $("addF").onclick = () => { pushUndo(); const f = { mark: nextMark(usedPlaceMarks()), feature: PAL.features[0] || "魔法陣" }; map.features.push(f); sel.place = f.mark; editFeature(f); };
     $("addC").onclick = () => { pushUndo(); const c = { mark: nextMark(usedPlaceMarks()), item: PAL.items[0] || "", gold: 0 }; map.chests.push(c); sel.place = c.mark; editChest(c); };
   } else if (layer === "props") {
@@ -945,7 +949,8 @@ function editUnit(u) {
   const w0 = weaponOf(u);
   markForm(`敵・味方「${u.mark}」${w0 ? "　武器：" + w0 : ""}`, [
     ["文字（配置に置く1文字）", "text", u.mark], ["元にするユニット", "list", u.unit, names], ["Lv（0＝ステージの決まり）", "number", u.level],
-    ["ボス", "check", u.boss], ["動かない", "check", u.hold], ["味方のゲスト（自軍で戦う）", "check", u.ally],
+    ["ボス", "check", u.boss], ["動かない", "check", u.hold], ["待つ（自軍が攻撃の届く所に来るまで動かない）", "check", u.wait], ["味方のゲスト（自軍で戦う）", "check", u.ally],
+    ["部隊（同じ名前の敵は一緒に動き出す。空なら部隊なし）", "list", u.squad || "", [...new Set(map.units.map(x => x.squad).filter(x => x))]],
     ["名前（画面に出す名前。空なら元の名前）", "text", u.name], ["職業（空なら元のまま）", "text", u.cls],
     ["持ち物（「,」区切り。入れ替え）", "list", u.items, PAL.items], ["スキル（「,」区切り。足す）", "text", u.skills],
     ["落とすもの", "list", u.drop, PAL.items], ["お金（-1＝なし）", "number", u.gold],
@@ -954,7 +959,7 @@ function editUnit(u) {
     const e = checkMark(v[0], u.mark, used); if (e) return e;
     if (!v[1]) return "元にするユニットを入れてください";
     renameMark(map.place, u.mark, v[0]);
-    Object.assign(u, { mark: v[0], unit: v[1].replace(/\s/g, ""), level: toInt(v[2], 0), boss: v[3], hold: v[4], ally: v[5], name: v[6], cls: v[7], items: v[8], skills: v[9], drop: v[10], gold: toInt(v[11], -1) });
+    Object.assign(u, { mark: v[0], unit: v[1].replace(/\s/g, ""), level: toInt(v[2], 0), boss: v[3], hold: v[4], wait: v[5], ally: v[6], squad: v[7], name: v[8], cls: v[9], items: v[10], skills: v[11], drop: v[12], gold: toInt(v[13], -1) });
   }, () => { pushUndo(); map.units = map.units.filter(x => x !== u); clearMark(map.place, u.mark); });
 }
 function editFeature(f) {
