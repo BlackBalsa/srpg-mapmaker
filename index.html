@@ -1233,7 +1233,7 @@ v3el.addEventListener("pointerdown", e => { if (e.target.tagName === "BUTTON") r
 v3el.addEventListener("pointermove", e => {
   if (!v3.pts.has(e.pointerId)) return;
   const prev = v3.pts.get(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]);
-  if (v3.pts.size === 1) { v3.yaw -= (e.clientX - prev[0]) * 0.01; // 指を右に動かすと、指の下の地面が右へ回る v3.pitch = Math.max(0.25, Math.min(1.57, v3.pitch + (e.clientY - prev[1]) * 0.006)); }
+  if (v3.pts.size === 1) { v3.yaw -= (e.clientX - prev[0]) * 0.01; /* 指を右に動かすと、指の下の地面が右へ回る */ v3.pitch = Math.max(0.25, Math.min(1.57, v3.pitch + (e.clientY - prev[1]) * 0.006)); }
   else { const [a, b] = [...v3.pts.values()]; const dd = Math.hypot(a[0] - b[0], a[1] - b[1]); if (v3.g) v3.zoom = Math.max(0.4, Math.min(5, v3.zoom * dd / v3.g)); v3.g = dd; }
   draw3d();
 });
