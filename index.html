@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f2329">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="マップ案">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>マップ案づくり</title>
+<!--
+  スマホで作るストーリーマップ（SRPG）。1ファイルだけで動く（通信なし・データはこの端末のブラウザに保存）。
+  書き出すテキストは Assets/Resources/SRPG/StoryMaps の形式と同じ（README「ストーリーマップ（手作りのマップ）」）。
+  読み書きの決まりは Unity 側の Map/Story/StoryMapText.cs に合わせてある（あちらを変えたら、下の parseMap / writeMap も合わせる）。
+  地形・ユニット・飾りなどの一覧は、下の PALETTE（Unity のメニュー「SRPG → スマホのマップ作り → 一覧をページに書き出す」で上書きされる）。
+-->
+<style>
+:root{--bg:#1f2329;--panel:#2a2f37;--panel2:#343a44;--line:#46505d;--text:#eef1f5;--sub:#a9b3c1;--accent:#f0b44c;--bad:#ff7a7a;--ok:#7fd88f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:15px;overscroll-behavior:none}
+body{display:flex;flex-direction:column;height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:40px}
+button:active{filter:brightness(1.3)}
+button.on{background:var(--accent);color:#222;border-color:var(--accent)}
+button.small{min-height:32px;padding:4px 8px;font-size:13px}
+button.danger{color:var(--bad)}
+input,select,textarea{font:inherit;color:var(--text);background:#15181d;border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+input[type=checkbox]{width:auto;transform:scale(1.3);margin-right:8px}
+label{display:block;margin:10px 0 4px;color:var(--sub);font-size:13px}
+#top{display:flex;gap:6px;align-items:center;padding:6px 8px;padding-top:max(6px,env(safe-area-inset-top));background:var(--panel);border-bottom:1px solid var(--line)}
+#title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:bold}
+#title small{color:var(--sub);font-weight:normal;margin-left:6px}
+#main{flex:1;display:flex;flex-direction:column;min-height:0}
+#panel{display:flex;flex-direction:column;background:var(--panel)}
+#stage{flex:1;min-height:0;position:relative;overflow:hidden;touch-action:none;background:#111418}
+#cv{position:absolute;left:0;top:0}
+#info{position:absolute;left:6px;top:6px;right:6px;pointer-events:none;font-size:12px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000}
+#dir{position:absolute;right:8px;bottom:6px;font-size:11px;color:var(--sub);pointer-events:none}
+#tools{display:flex;gap:4px;padding:6px 6px 0;background:var(--panel);overflow-x:auto}
+#tools button{flex:0 0 auto;padding:6px 9px;min-height:36px;font-size:13px}
+#layers{display:flex;gap:4px;padding:6px;background:var(--panel)}
+#layers button{flex:1;padding:6px 2px;font-size:13px}
+#hotbar{display:flex;gap:6px;padding:0 6px 8px;background:var(--panel);overflow-x:auto;align-items:stretch}
+.slot{flex:0 0 auto;width:58px;min-height:58px;padding:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;line-height:1.1;text-align:center;border-radius:10px}
+.slot .sw{width:30px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;color:#fff;text-shadow:0 0 2px #000;border:1px solid rgba(255,255,255,.25)}
+.slot.sel{outline:3px solid var(--accent);outline-offset:-1px}
+.slot.inv{background:#3b3220;border-color:#7a6230}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
+.sheet.open{display:flex;align-items:flex-end}
+.sheet .box{background:var(--panel);width:100%;max-height:88dvh;overflow:auto;border-radius:16px 16px 0 0;padding:12px 14px calc(16px + env(safe-area-inset-bottom))}
+.sheet h2{font-size:17px;margin:2px 0 8px;display:flex;align-items:center;gap:8px}
+.sheet h2 span{flex:1}
+.sheet h3{font-size:14px;margin:16px 0 6px;color:var(--accent)}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:6px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;margin:6px 0}
+.card .row{margin-top:4px}
+.muted{color:var(--sub);font-size:12px}
+.warn{color:var(--bad);font-size:13px;margin:3px 0}
+.okmsg{color:var(--ok);font-size:13px}
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper button{width:44px;flex:0 0 44px}
+.stepper input{text-align:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{min-height:34px;padding:4px 10px;font-size:13px}
+#toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:#000c;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;display:none;z-index:20}
+/* 横画面：マップを左に大きく、道具・持ち物を右の列に */
+@media (orientation:landscape) and (max-height:600px){
+  #top{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right));padding-top:4px;padding-bottom:4px}
+  #top button{min-height:34px;padding:4px 10px}
+  #main{flex-direction:row}
+  #panel{width:min(42vw,330px);flex:0 0 auto;border-left:1px solid var(--line);overflow:hidden;padding-right:env(safe-area-inset-right)}
+  #tools{flex-wrap:wrap;overflow:visible;padding:6px}
+  #tools button{min-height:32px;padding:4px 8px;font-size:12px}
+  #layers{padding:0 6px 6px}
+  #hotbar{flex:1;flex-wrap:wrap;overflow-y:auto;overflow-x:hidden;align-content:flex-start;padding:0 6px 6px}
+  .slot{width:62px;min-height:54px}
+  #stage{padding-left:env(safe-area-inset-left)}
+  #dir{bottom:auto;top:6px}
+  #info{right:180px}
+  .sheet .box{max-height:100dvh;border-radius:16px 16px 0 0;width:min(100%,640px);margin:0 auto}
+}
+textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<div id="top">
+  <button id="bMaps" title="マップの一覧">☰</button>
+  <div id="title">-</div>
+  <button id="bUndo">↶</button>
+  <button id="bRedo">↷</button>
+  <button id="bOut" class="on">渡す</button>
+</div>
+<div id="main">
+<div id="stage"><canvas id="cv"></canvas><div id="info"></div><div id="dir">↑ 奥（敵側）／ ↓ 手前</div></div>
+<div id="panel">
+<div id="tools">
+  <button data-tool="tap">👆 1マス</button>
+  <button data-tool="pen" class="on">✏ ペン</button>
+  <button data-tool="rect">▭ 四角</button>
+  <button data-tool="fill">🪣 塗りつぶし</button>
+  <button data-tool="pick">💧 スポイト</button>
+  <button data-tool="move">✋ 動かす</button>
+  <button id="bFit">⤢ 全体</button>
+  <button id="bSettings">⚙ マップ設定</button>
+</div>
+<div id="layers">
+  <button data-layer="terrain" class="on">地形</button>
+  <button data-layer="height">高さ</button>
+  <button data-layer="place">配置</button>
+  <button data-layer="props">飾り</button>
+</div>
+<div id="hotbar"></div>
+</div>
+</div>
+
+<!-- マップの一覧 -->
+<div class="sheet" id="sMaps"><div class="box">
+  <h2><span>マップの一覧</span><button class="small" data-close>閉じる</button></h2>
+  <div class="row"><button id="bNew">＋新しいマップ</button><button id="bImport">テキストから開く</button></div>
+  <div id="mapList"></div>
+  <h3>ゲームの一覧（地形・敵・飾りなど）</h3>
+  <div class="muted" id="palInfo"></div>
+  <div class="row" style="margin-top:6px"><button id="bPalLoad" class="small">palette.json を読む</button><button id="bPalReset" class="small">ページの一覧に戻す</button></div>
+  <input type="file" id="fPal" accept=".json,application/json,text/plain" style="display:none">
+</div></div>
+
+<!-- 新しいマップ -->
+<div class="sheet" id="sNew"><div class="box">
+  <h2><span>新しいマップ</span><button class="small" data-close>やめる</button></h2>
+  <label>名前</label><input id="nName" value="">
+  <div class="row">
+    <div><label>横（マス）</label><div class="stepper"><button data-step="nW:-1">−</button><input id="nW" type="number" inputmode="numeric" value="14"><button data-step="nW:1">＋</button></div></div>
+    <div><label>縦（マス）</label><div class="stepper"><button data-step="nH:-1">−</button><input id="nH" type="number" inputmode="numeric" value="12"><button data-step="nH:1">＋</button></div></div>
+  </div>
+  <label>最初に敷く地形</label><select id="nT"></select>
+  <div style="margin-top:14px"><button id="bNewOk" class="on" style="width:100%">作る</button></div>
+</div></div>
+
+<!-- テキストから開く -->
+<div class="sheet" id="sImport"><div class="box">
+  <h2><span>テキストから開く</span><button class="small" data-close>やめる</button></h2>
+  <div class="muted">ストーリーマップの .txt の中身を貼り付けるか、ファイルを選んでください（PCで作ったマップの続きもできます）。</div>
+  <textarea id="impText" rows="12" style="margin-top:8px"></textarea>
+  <div class="row" style="margin-top:8px"><button id="bImpFile">ファイルを選ぶ</button><button id="bImpOk" class="on">開く</button></div>
+  <input type="file" id="fImp" accept=".txt,text/plain" style="display:none">
+</div></div>
+
+<!-- マップ設定 -->
+<div class="sheet" id="sSet"><div class="box">
+  <h2><span>マップ設定</span><button class="small" data-close>閉じる</button></h2>
+  <label>名前（ファイル名にもなる）</label><input id="sName">
+  <h3>大きさ</h3>
+  <div class="row">
+    <div><label>横（マス）</label><div class="stepper"><button data-step="sW:-1">−</button><input id="sW" type="number" inputmode="numeric"><button data-step="sW:1">＋</button></div></div>
+    <div><label>縦（マス）</label><div class="stepper"><button data-step="sH:-1">−</button><input id="sH" type="number" inputmode="numeric"><button data-step="sH:1">＋</button></div></div>
+  </div>
+  <div class="row">
+    <div><label>横を増やす・減らす側</label><select id="sAX"><option value="r">右</option><option value="l">左</option></select></div>
+    <div><label>縦を増やす・減らす側</label><select id="sAY"><option value="b">手前（下）</option><option value="t">奥（上）</option></select></div>
+  </div>
+  <button id="bResize" style="width:100%;margin-top:8px">この大きさにする</button>
+  <h3>ステージ・クリア条件</h3>
+  <label>使うステージ（「1, 5」のように。空なら試すときだけ）</label><input id="sStage" inputmode="numeric">
+  <label>クリア条件</label><select id="sObj"></select>
+  <div class="row">
+    <div><label>ターン数（0＝いつもの）</label><input id="sTurns" type="number" inputmode="numeric"></div>
+    <div><label>制限ターン（-1＝いつもの、0＝なし）</label><input id="sLimit" type="number" inputmode="numeric"></div>
+  </div>
+  <label>テーマ</label><select id="sTheme"></select>
+  <label>ギミック（押して付ける・外す）</label><div class="chips" id="sGim"></div>
+  <label style="display:flex;align-items:center;margin-top:12px"><input type="checkbox" id="sStageEnemies">いつもの敵も出す（E のマス）</label>
+  <label style="display:flex;align-items:center"><input type="checkbox" id="sRandomBoss">ランダムなボスも出てよい</label>
+  <label>説明（メモ。ゲームには出ない）</label><textarea id="sNote" rows="3" style="font-family:inherit;font-size:14px"></textarea>
+</div></div>
+
+<!-- 持ち物（全部の一覧）・凡例 -->
+<div class="sheet" id="sInv"><div class="box">
+  <h2><span id="invTitle">持ち物</span><button class="small" data-close>閉じる</button></h2>
+  <div class="muted" id="invHelp"></div>
+  <div class="grid" id="invGrid" style="margin-top:8px"></div>
+  <div id="legend"></div>
+</div></div>
+
+<!-- 凡例1つを編集 -->
+<div class="sheet" id="sMark"><div class="box">
+  <h2><span id="markTitle">-</span><button class="small" data-close>閉じる</button></h2>
+  <div id="markBody"></div>
+</div></div>
+
+<!-- 渡す（テキストにする） -->
+<div class="sheet" id="sOut"><div class="box">
+  <h2><span>PCに渡す</span><button class="small" data-close>閉じる</button></h2>
+  <div id="outWarn"></div>
+  <div class="card" id="cloudNote" style="display:none">☁ このマップはクラウドに保存されています。Claudeに「スマホで作ったマップ（<b id="cloudName"></b>）をPCに入れて」と頼むと、そのままPCのストーリーマップに入れます。</div>
+  <div class="row" style="margin-top:8px"><button id="bCopy" class="on">コピー</button><button id="bShare">共有する</button><button id="bDown">保存（.txt）</button></div>
+  <div class="muted" style="margin-top:8px">自分で渡すとき：コピーしてメールやLINEで自分に送るか、.txt を保存して Googleドライブなどに置き、PCの Unity のメニュー「SRPG → スマホのマップ作り → 取り込む」で入れます（ここに貼り付けてもOK）。</div>
+  <label>中身（<span id="outFile"></span>）</label>
+  <textarea id="outText" rows="14" readonly></textarea>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+/*PALETTE-START*/
+const DEFAULT_PALETTE = {
+  "source": "ページの初期値（2026-11-24 のコードから）",
+  "terrains": [
+    {"s":".","name":"平地","color":"#8fc261","passable":true},
+    {"s":"T","name":"森","color":"#549445","passable":true},
+    {"s":"^","name":"山","color":"#99856b","passable":true},
+    {"s":"F","name":"砦","color":"#b3a899","passable":true},
+    {"s":"~","name":"水","color":"#4080d9","passable":false},
+    {"s":"#","name":"壁","color":"#595961","passable":false},
+    {"s":"=","name":"道","color":"#c7ad80","passable":true},
+    {"s":":","name":"砂","color":"#e6d18c","passable":true},
+    {"s":"W","name":"深い森","color":"#336b33","passable":true},
+    {"s":"G","name":"門","color":"#8c6647","passable":true},
+    {"s":"H","name":"木の橋","color":"#9e7852","passable":true},
+    {"s":"B","name":"石の橋","color":"#a8a399","passable":true}
+  ],
+  "units": ["山賊","弓兵","兵士","アレン","ベル","クレア","ドラン","ミラ","セージ"],
+  "bosses": ["号令の将ヴァルガ","角笛の頭目ザイル","崩岩の巨兵ドルガ","刻守のセレス"],
+  "items": ["ソー","鋼のソー","ヤスリ","ドリル","劈開ノミ","投げノミ","ハンマー","手斧","槍","弓","くさび弓","研磨盤","衝撃盤","劈開盤","回復薬","宝石の粉"],
+  "features": ["魔法陣","砦の守り"],
+  "props": [{"name":"家","blocks":true},{"name":"像","blocks":false},{"name":"柵","blocks":false}],
+  "objectives": ["敵全滅","ボス撃破","本陣制圧","指定ターン防衛","指定ターン生存","指定マス到達"],
+  "themes": ["平原","森","砂漠","砦","鉱山","台座種族の都市"],
+  "gimmicks": ["砦の守り"],
+  "weapons": [
+    {"name":"剣","glyph":"剣"},{"name":"槍","glyph":"槍"},{"name":"槌","glyph":"槌"},{"name":"弓","glyph":"弓"},{"name":"杖","glyph":"杖"},{"name":"鑑定眼","glyph":"眼"}
+  ],
+  "itemWeapons": {
+    "ソー":"剣","鋼のソー":"剣","ヤスリ":"剣","ドリル":"剣","くさび刃":"剣","峰打ちソー":"剣",
+    "劈開ノミ":"槍","投げノミ":"槍","平ノミ":"槍","石突きノミ":"槍","槍":"槍",
+    "ハンマー":"槌","ピックハンマー":"槌","目立てハンマー":"槌","手斧":"槌",
+    "くさび弓":"弓","ドリル弓":"弓","つぶて弓":"弓","弓":"弓",
+    "研磨盤":"杖","衝撃盤":"杖","劈開盤":"杖",
+    "手当て":"鑑定眼","ひびの修復":"鑑定眼","宝石力の補給":"鑑定眼","磨き上げ":"鑑定眼","お墨付き":"鑑定眼","見抜く":"鑑定眼","傷を見つける":"鑑定眼"
+  },
+  "unitWeapons": {
+    "アレン":"剣","ベル":"槍","クレア":"弓","ドラン":"槌","ミラ":"杖","セージ":"鑑定眼","山賊":"槌","弓兵":"弓","兵士":"槍",
+    "号令の将ヴァルガ":"槍","角笛の頭目ザイル":"剣","崩岩の巨兵ドルガ":"槌","刻守のセレス":"杖"
+  }
+};
+/*PALETTE-END*/
+
+// ================================================================ 一覧（ゲームの定義）
+const PAL_KEY = "srpgMapMaker.palette", MAPS_KEY = "srpgMapMaker.maps", CUR_KEY = "srpgMapMaker.current", HOT_KEY = "srpgMapMaker.hotbar";
+let PAL = DEFAULT_PALETTE;
+// この端末のブラウザの保存（使えない環境もあるので、失敗しても止まらない）
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+try { const p = JSON.parse(LS.get(PAL_KEY) || "null"); if (p && p.terrains) PAL = p; } catch (e) {}
+const terrainBy = s => PAL.terrains.find(t => t.s === s);
+// 敵の武器種：持ち物を書いていればその最初の武器、なければ元にするユニットの武器（一覧の itemWeapons・unitWeapons）
+function weaponOf(u) {
+  // Unity からの書き出しは [{key, value}] の並び（JsonUtility が辞書を書けないため）
+  const toMap = l => Object.fromEntries((l || []).map(x => [x.key, x.value]));
+  const iw = PAL.itemWeapons || toMap(PAL.itemWeaponList), uw = PAL.unitWeapons || toMap(PAL.unitWeaponList);
+  for (const it of splitList(u.items)) if (iw[it]) return iw[it];
+  return uw[u.unit] || "";
+}
+const weaponGlyph = w => { const d = (PAL.weapons || []).find(x => x.name === w); return d ? d.glyph : (w ? [...w][0] : ""); };
+
+// 配置で決まった意味のある文字（StoryMap.IsBuiltInMark と同じ）
+const isBuiltIn = c => c === "." || c === "P" || c === "E" || c === "C" || c === "*" || (c >= "1" && c <= "9");
+const MARK_CHARS = "abcdefghijklmnopqrstuvwxyzABDFGHIJKLMNOQRSTUVWXYZ";
+
+// ================================================================ 読み書き（StoryMapText.cs と同じ決まり）
+function blankMap(name, w, h, fill) {
+  const g = (v) => Array.from({ length: h }, () => Array(w).fill(v));
+  return { name, stages: "", objective: "", turns: 0, limit: -1, theme: "", gimmicks: [], stageEnemies: false, randomBoss: false,
+    note: "", values: [], w, h, terrain: g(fill || "."), height: g(0), place: g("."), props: g("."), hasProps: false,
+    units: [], features: [], chests: [], propMarks: [], sections: [] };
+}
+
+const KEYS = {
+  name: ["名前", "name"], stage: ["ステージ", "stage", "stages"], objective: ["クリア条件", "勝利条件", "objective"],
+  turns: ["ターン数", "ターン", "turns"], limit: ["制限ターン", "turnlimit"], theme: ["テーマ", "theme"],
+  gimmick: ["ギミック", "gimmick", "gimmicks"], stageEnemies: ["いつもの敵も出す", "stageenemies"],
+  randomBoss: ["ランダムなボス", "randomboss"], note: ["説明", "メモ", "note"],
+};
+const SECS = {
+  terrain: ["地形", "terrain"], height: ["高さ", "heights"], place: ["配置", "placement"], units: ["敵", "ユニット", "units"],
+  features: ["マスの特徴", "特徴", "features"], chests: ["宝箱", "chests"], propGrid: ["飾りの配置", "propgrid"], props: ["飾り", "置物", "props"],
+};
+const is = (k, names) => names.some(n => n.toLowerCase() === k.toLowerCase());
+const half = s => (s || "").replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/−/g, "-");
+const splitList = v => (v || "").split(/[,、，]/).map(x => x.trim()).filter(x => x);
+const toInt = (v, fb) => { const n = parseInt(half(v), 10); return isNaN(n) ? fb : n; };
+const truthy = v => ["はい", "オン", "する", "出す", "true", "yes", "on", "1"].includes((v || "").trim().toLowerCase());
+const splitKey = line => { const i = line.search(/[:：=]/); return i <= 0 ? null : [line.slice(0, i).trim(), line.slice(i + 1).trim()]; };
+const stripGold = s => { s = half(s).trim(); for (const x of ["ゴールド", "G", "g"]) if (s.endsWith(x)) return s.slice(0, -x.length); return s; };
+
+function parseMap(text) {
+  const warns = [];
+  const m = blankMap("", 1, 1);
+  let section = null, unknown = null, lineNo = 0;
+  const rows = { terrain: [], height: [], place: [], propGrid: [] };
+  const gridSec = s => s && (is(s, SECS.terrain) || is(s, SECS.height) || is(s, SECS.place) || is(s, SECS.propGrid));
+  for (const raw of text.replace(/\r/g, "").split("\n")) {
+    lineNo++;
+    const line = raw.trim().replace(/［/g, "[").replace(/］/g, "]");
+    if (!line) continue;
+    const comment = line.startsWith("//") || line.startsWith("＃") ||
+      (line.startsWith("#") && (!gridSec(section) || line.length === 1 || line[1] === " " || line[1] === "　"));
+    if (comment) { if (unknown) unknown.lines.push(raw.trimEnd()); continue; }
+    if (line.startsWith("[") && line.endsWith("]")) {
+      section = line.slice(1, -1).trim(); unknown = null;
+      if (!Object.values(SECS).some(n => is(section, n))) { unknown = { title: section, lines: [] }; m.sections.push(unknown); }
+      continue;
+    }
+    const grid = () => line.replace(/[ 　\t]/g, "");
+    if (section === null) {
+      const kv = splitKey(line);
+      if (!kv) { warns.push(`${lineNo}行目：「キー: 値」の形になっていません（${line}）`); continue; }
+      const [k, v] = kv;
+      if (is(k, KEYS.name)) m.name = v;
+      else if (is(k, KEYS.stage)) m.stages = splitList(v).map(half).join(", ");
+      else if (is(k, KEYS.objective)) m.objective = v;
+      else if (is(k, KEYS.turns)) m.turns = toInt(v, 0);
+      else if (is(k, KEYS.limit)) m.limit = toInt(v, -1);
+      else if (is(k, KEYS.theme)) m.theme = v;
+      else if (is(k, KEYS.gimmick)) m.gimmicks = splitList(v);
+      else if (is(k, KEYS.stageEnemies)) m.stageEnemies = truthy(v);
+      else if (is(k, KEYS.randomBoss)) m.randomBoss = truthy(v);
+      else if (is(k, KEYS.note)) m.note = m.note ? m.note + "\n" + v : v;
+      else m.values.push({ key: k, value: v });
+    }
+    else if (is(section, SECS.terrain)) rows.terrain.push(grid());
+    else if (is(section, SECS.height)) rows.height.push(grid());
+    else if (is(section, SECS.place)) rows.place.push(grid());
+    else if (is(section, SECS.propGrid)) rows.propGrid.push(grid());
+    else if (is(section, SECS.units) || is(section, SECS.features) || is(section, SECS.chests) || is(section, SECS.props)) {
+      const i = line.search(/[:：]/);
+      const head = i > 0 ? line.slice(0, i).trim() : "";
+      const rest = i > 0 ? line.slice(i + 1).trim() : "";
+      if ([...head].length !== 1) { warns.push(`${lineNo}行目：「a: 山賊」のように1文字と「:」で始めてください（${line}）`); continue; }
+      const mark = head;
+      const toks = rest.split(/[ 　\t]+/).filter(x => x);
+      if (is(section, SECS.props)) {
+        if (!toks.length) continue;
+        const p = { mark, prop: toks[0], blocks: false, yaw: 0 };
+        for (const t of toks.slice(1)) {
+          if (t === "通れない" || t === "入れない") p.blocks = true;
+          else if (t === "通れる") p.blocks = false;
+          else { const kv = splitKey(t); if (kv && kv[0] === "向き") p.yaw = toInt(kv[1], 0); else warns.push(`${lineNo}行目：「${t}」は知らない書き方です`); }
+        }
+        m.propMarks = m.propMarks.filter(x => x.mark !== mark); m.propMarks.push(p);
+        continue;
+      }
+      if (isBuiltIn(mark)) { warns.push(`${lineNo}行目：「${mark}」は配置で決まった意味がある文字なので凡例には使えません`); continue; }
+      if (is(section, SECS.units)) {
+        if (!toks.length) continue;
+        const u = { mark, unit: toks[0], level: 0, boss: false, hold: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, extra: [] };
+        for (const t of toks.slice(1)) {
+          const low = half(t).toLowerCase();
+          if (/^lv\d+$/.test(low)) u.level = parseInt(low.slice(2), 10);
+          else if (t.startsWith("レベル") && !isNaN(parseInt(half(t.slice(3)), 10))) u.level = parseInt(half(t.slice(3)), 10);
+          else if (t === "ボス") u.boss = true;
+          else if (t === "動かない") u.hold = true;
+          else if (t === "味方" || t === "ゲスト") u.ally = true;
+          else {
+            const kv = splitKey(t);
+            if (!kv) { u.extra.push(t); warns.push(`${lineNo}行目：「${t}」は知らない書き方です`); continue; }
+            const [k, v] = kv;
+            if (k === "名前") u.name = v; else if (k === "職業") u.cls = v;
+            else if (k === "持ち物" || k === "所持品") u.items = splitList(v).join(",");
+            else if (k === "スキル") u.skills = splitList(v).join(",");
+            else if (k === "落とす" || k === "ドロップ") u.drop = v;
+            else if (k === "お金") u.gold = toInt(stripGold(v), -1);
+            else { u.extra.push(t); warns.push(`${lineNo}行目：「${k}」は知らない項目です`); }
+          }
+        }
+        m.units = m.units.filter(x => x.mark !== mark); m.units.push(u);
+      } else if (is(section, SECS.features)) {
+        m.features = m.features.filter(x => x.mark !== mark); m.features.push({ mark, feature: rest });
+      } else {
+        const c = { mark, item: "", gold: 0 };
+        for (const t of toks) { const g = stripGold(t); if (/^\d+$/.test(g)) c.gold += parseInt(g, 10); else c.item = c.item ? c.item + " " + t : t; }
+        m.chests = m.chests.filter(x => x.mark !== mark); m.chests.push(c);
+      }
+    }
+    else if (unknown) unknown.lines.push(raw.trimEnd());
+  }
+  if (!m.name) m.name = "名前なし";
+  if (!rows.terrain.length) warns.push("[地形] がありません");
+  const all = [rows.terrain, rows.height, rows.place, rows.propGrid];
+  const w = Math.max(1, ...all.flatMap(r => r.map(s => [...s].length)));
+  const h = Math.max(1, rows.terrain.length, rows.height.length, rows.place.length, rows.propGrid.length);
+  m.w = w; m.h = h;
+  const fit = (r, fb) => Array.from({ length: h }, (_, y) => { const cs = [...(r[y] || "")]; return Array.from({ length: w }, (_, x) => cs[x] || fb); });
+  m.terrain = fit(rows.terrain, ".");
+  m.height = fit(rows.height, "0").map(r => r.map(c => { const n = parseInt(half(c), 10); return isNaN(n) ? 0 : n; }));
+  m.place = fit(rows.place, ".");
+  m.props = fit(rows.propGrid, ".");
+  m.hasProps = rows.propGrid.length > 0 || m.propMarks.length > 0;
+  return { map: m, warns };
+}
+
+function unitLine(u) {
+  const p = [`${u.mark}: ${u.unit}`];
+  if (u.level > 0) p.push(`Lv${u.level}`);
+  if (u.boss) p.push("ボス");
+  if (u.hold) p.push("動かない");
+  if (u.ally) p.push("味方");
+  if (u.name) p.push(`名前=${u.name.replace(/\s/g, "")}`);
+  if (u.cls) p.push(`職業=${u.cls.replace(/\s/g, "")}`);
+  if (u.items) p.push(`持ち物=${splitList(u.items).join(",")}`);
+  if (u.skills) p.push(`スキル=${splitList(u.skills).join(",")}`);
+  if (u.drop) p.push(`落とす=${u.drop.replace(/\s/g, "")}`);
+  if (u.gold >= 0) p.push(`お金=${u.gold}`);
+  for (const e of u.extra || []) p.push(e);
+  return p.join(" ");
+}
+function chestLine(c) { const p = [`${c.mark}:`]; if (c.item) p.push(c.item); if (c.gold > 0) p.push(`${c.gold}G`); return p.join(" "); }
+function propLine(p) { const s = [`${p.mark}: ${p.prop}`]; if (p.blocks) s.push("通れない"); if (p.yaw) s.push(`向き=${p.yaw}`); return s.join(" "); }
+
+function writeMap(m) {
+  const L = [];
+  L.push("# ストーリーマップ（1マップ＝1ファイル）。書き方は README の「ストーリーマップ（手作りのマップ）」。スマホのマップ作りページで作成");
+  L.push(`名前: ${m.name}`);
+  L.push(`ステージ: ${splitList(m.stages).map(half).join(", ")}`);
+  L.push(`クリア条件: ${m.objective}`);
+  L.push(`ターン数: ${m.turns}`);
+  L.push(`制限ターン: ${m.limit}`);
+  L.push(`テーマ: ${m.theme}`);
+  L.push(`ギミック: ${m.gimmicks.join("、")}`);
+  L.push(`いつもの敵も出す: ${m.stageEnemies ? "はい" : "いいえ"}`);
+  L.push(`ランダムなボス: ${m.randomBoss ? "はい" : "いいえ"}`);
+  for (const l of (m.note || "").split("\n")) if (l.trim()) L.push(`説明: ${l.trim()}`);
+  for (const v of m.values) if (v.key) L.push(`${v.key}: ${v.value}`);
+  L.push("", "[地形]", ...m.terrain.map(r => r.join("")));
+  L.push("", "[高さ]", ...m.height.map(r => r.join("")));
+  L.push("", "[配置]", ...m.place.map(r => r.join("")));
+  L.push("", "[敵]", ...m.units.map(unitLine));
+  L.push("", "[マスの特徴]", ...m.features.map(f => `${f.mark}: ${f.feature}`));
+  L.push("", "[宝箱]", ...m.chests.map(chestLine));
+  const anyProp = m.props.some(r => r.some(c => c !== "."));
+  if (anyProp || m.propMarks.length) {
+    L.push("", "[飾りの配置]", ...m.props.map(r => r.join("")));
+    L.push("", "[飾り]", ...m.propMarks.map(propLine));
+  }
+  for (const s of m.sections) L.push("", `[${s.title}]`, ...s.lines);
+  return L.join("\n") + "\n";
+}
+
+// ================================================================ チェック（StoryMapBuilder.Check の主なもの）
+function checkMap(m) {
+  const errs = [], warns = [];
+  const starts = [], seenNum = new Set();
+  const legendMarks = new Set([...m.units.map(u => u.mark), ...m.features.map(f => f.mark), ...m.chests.map(c => c.mark)]);
+  const propMarks = new Set(m.propMarks.map(p => p.mark));
+  const pass = (x, y) => { const t = terrainBy(m.terrain[y][x]); const pm = m.propMarks.find(p => p.mark === m.props[y][x]); return (!t || t.passable) && !(pm && pm.blocks); };
+  const unknownT = new Set(), unknownP = new Set(), unknownPr = new Set();
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const t = m.terrain[y][x]; if (!terrainBy(t)) unknownT.add(t);
+    const c = m.place[y][x];
+    if (c === "P" || (c >= "1" && c <= "9")) { starts.push([x, y]); if (c !== "P") { if (seenNum.has(c)) warns.push(`出撃の番号「${c}」が2か所にあります`); seenNum.add(c); } }
+    if (!isBuiltIn(c) && !legendMarks.has(c)) unknownP.add(c);
+    const pr = m.props[y][x]; if (pr !== "." && !propMarks.has(pr)) unknownPr.add(pr);
+  }
+  if (unknownT.size) errs.push(`知らない地形の記号：${[...unknownT].join(" ")}`);
+  if (unknownP.size) errs.push(`配置に、凡例にない文字：${[...unknownP].join(" ")}（配置の持ち物から足してください）`);
+  if (unknownPr.size) errs.push(`飾りの配置に、凡例にない文字：${[...unknownPr].join(" ")}`);
+  if (!starts.length) errs.push("出撃位置（P か 1〜9）がありません");
+  const allNames = [...PAL.units, ...PAL.bosses];
+  for (const u of m.units) if (allNames.length && !allNames.includes(u.unit)) warns.push(`「${u.mark}」の元にするユニット「${u.unit}」が一覧にありません（ゲームで見つからないと置かれません）`);
+  if (m.objective && PAL.objectives.length && !PAL.objectives.includes(m.objective)) warns.push(`クリア条件「${m.objective}」が一覧にありません`);
+  for (const g of m.gimmicks) if (PAL.gimmicks.length && !PAL.gimmicks.includes(g)) warns.push(`ギミック「${g}」が一覧にありません`);
+  const hasGoal = m.place.some(r => r.includes("*"));
+  if (["本陣制圧", "指定マス到達", "指定ターン防衛"].includes(m.objective) && !hasGoal) warns.push(`「${m.objective}」の目標のマス（*）がありません（ゲームが自動で選びます）`);
+  if (m.objective === "ボス撃破" && !m.units.some(u => u.boss && !u.ally)) warns.push("ボス撃破ですが「ボス」の敵がいません（いちばん強い敵がボスになります）");
+  if (m.stageEnemies && !m.place.some(r => r.includes("E"))) warns.push("「いつもの敵も出す」ですが E のマスがありません（ゲームが空きマスに置きます）");
+  // 通れないマスの上のユニット・出撃位置から歩いて行けないマス
+  const reach = Array.from({ length: m.h }, () => Array(m.w).fill(false));
+  const q = starts.filter(([x, y]) => pass(x, y)); q.forEach(([x, y]) => reach[y][x] = true);
+  while (q.length) { const [x, y] = q.pop(); for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= m.w || ny >= m.h || reach[ny][nx] || !pass(nx, ny)) continue; reach[ny][nx] = true; q.push([nx, ny]); } }
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const c = m.place[y][x]; if (c === ".") continue;
+    const where = `（横${x + 1}・縦${y + 1}）`;
+    const isUnit = c === "P" || c === "E" || (c >= "1" && c <= "9") || m.units.some(u => u.mark === c);
+    if (isUnit && !pass(x, y)) errs.push(`通れないマスの上に「${c}」があります${where}`);
+    else if (starts.length && !reach[y][x] && (c === "*" || c === "C" || m.units.some(u => u.mark === c && !u.hold) || m.chests.some(ch => ch.mark === c)))
+      warns.push(`出撃位置から歩いて行けないマスに「${c}」があります${where}`);
+  }
+  return { errs, warns };
+}
+
+// ================================================================ 状態
+let maps = {};   // id → { text, updated }
+try { maps = JSON.parse(LS.get(MAPS_KEY) || "{}"); } catch (e) { maps = {}; }
+let curId = LS.get(CUR_KEY);
+let map = null;
+let layer = "terrain", tool = "pen";
+const sel = { terrain: ".", height: 0, place: "P", props: "." };
+let hot = {};
+try { hot = JSON.parse(LS.get(HOT_KEY) || "{}"); } catch (e) { hot = {}; }
+let undoStack = [], redoStack = [];
+
+const $ = id => document.getElementById(id);
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 1800); }
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+let saveTimer = null;
+function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
+function saveNow() {
+  if (!map || !curId) return;
+  const text = writeMap(map);
+  if (maps[curId] && maps[curId].text === text) return;
+  maps[curId] = { text, updated: Date.now() };
+  LS.set(MAPS_KEY, JSON.stringify(maps)); LS.set(CUR_KEY, curId);
+  cloudPut(curId);
+}
+function openMap(id) {
+  const r = maps[id]; if (!r) return;
+  curId = id; map = parseMap(r.text).map; undoStack = []; redoStack = [];
+  LS.set(CUR_KEY, id); refreshAll(); fitView();
+}
+function addMap(m) { const id = uid(); maps[id] = { text: writeMap(m), updated: Date.now() }; saveAll(); cloudPut(id); openMap(id); }
+function saveAll() { LS.set(MAPS_KEY, JSON.stringify(maps)); }
+
+const snap = () => JSON.stringify(map);
+function pushUndo() { undoStack.push(snap()); if (undoStack.length > 80) undoStack.shift(); redoStack = []; }
+function undo() { if (!undoStack.length) return; redoStack.push(snap()); map = JSON.parse(undoStack.pop()); refreshAll(); saveSoon(); }
+function redo() { if (!redoStack.length) return; undoStack.push(snap()); map = JSON.parse(redoStack.pop()); refreshAll(); saveSoon(); }
+
+// ================================================================ 描く
+const cv = $("cv"), ctx = cv.getContext("2d"), stage = $("stage");
+let view = { s: 32, ox: 0, oy: 0 };
+let rectPreview = null;
+function resizeCanvas() {
+  const r = stage.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = r.width * d; cv.height = r.height * d; cv.style.width = r.width + "px"; cv.style.height = r.height + "px";
+  ctx.setTransform(d, 0, 0, d, 0, 0); draw();
+}
+function fitView() {
+  if (!map) return;
+  const r = stage.getBoundingClientRect();
+  view.s = Math.max(8, Math.min(64, Math.floor(Math.min((r.width - 16) / map.w, (r.height - 30) / map.h))));
+  view.ox = (r.width - view.s * map.w) / 2; view.oy = (r.height - view.s * map.h) / 2 + 8; draw();
+}
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const f = v => Math.max(0, Math.min(255, Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k))));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+function placeStyle(c) {
+  if (c === "P" || (c >= "1" && c <= "9")) return { bg: "#3d7bff", label: c === "P" ? "P" : c };
+  if (c === "E") return { bg: "#ff8a3d", label: "E" };
+  if (c === "C") return { bg: "#d9a520", label: "箱" };
+  if (c === "*") return { bg: "#ff4fa8", label: "★" };
+  const u = map.units.find(x => x.mark === c);
+  if (u) { const w = weaponOf(u); return { bg: u.ally ? "#2fae5a" : (u.boss ? "#a01818" : "#e04848"), label: w ? weaponGlyph(w) : c, mark: w ? c : "", boss: u.boss }; }
+  if (map.chests.find(x => x.mark === c)) return { bg: "#d9a520", label: c };
+  if (map.features.find(x => x.mark === c)) return { bg: "#9b5de5", label: c, ring: true };
+  return { bg: "#777", label: c };
+}
+function draw() {
+  const r = stage.getBoundingClientRect();
+  ctx.clearRect(0, 0, r.width, r.height);
+  if (!map) return;
+  const s = view.s;
+  for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+    const px = view.ox + x * s, py = view.oy + y * s;
+    if (px > r.width || py > r.height || px + s < 0 || py + s < 0) continue;
+    const t = terrainBy(map.terrain[y][x]);
+    const hgt = map.height[y][x];
+    ctx.fillStyle = t ? shade(t.color, Math.min(0.45, hgt * 0.09)) : "#ff00ff";
+    ctx.fillRect(px, py, s, s);
+    if (t && (t.s === "H" || t.s === "B")) { // 橋：水の上に板
+      ctx.fillStyle = "#4080d9"; ctx.fillRect(px, py, s, s * 0.18); ctx.fillRect(px, py + s * 0.82, s, s * 0.18);
+    }
+    if (s >= 14 && (layer === "terrain" || !t)) {
+      ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.font = `${Math.floor(s * 0.38)}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(map.terrain[y][x], px + s / 2, py + s / 2);
+    }
+    if (hgt > 0 && s >= 12) {
+      const big = layer === "height";
+      ctx.fillStyle = big ? "#fff" : "rgba(255,255,255,.85)"; ctx.font = `bold ${Math.floor(s * (big ? 0.5 : 0.3))}px sans-serif`;
+      ctx.textAlign = big ? "center" : "left"; ctx.textBaseline = big ? "middle" : "bottom";
+      ctx.strokeStyle = "rgba(0,0,0,.7)"; ctx.lineWidth = 3;
+      const tx = big ? px + s / 2 : px + 2, ty = big ? py + s / 2 : py + s - 1;
+      ctx.strokeText(hgt, tx, ty); ctx.fillText(hgt, tx, ty);
+    }
+    const pc = map.place[y][x];
+    if (pc !== ".") {
+      const st = placeStyle(pc), a = layer === "place" ? 1 : 0.75;
+      ctx.globalAlpha = a;
+      ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, s * 0.36, 0, Math.PI * 2);
+      if (st.ring) { ctx.strokeStyle = st.bg; ctx.lineWidth = Math.max(2, s * 0.1); ctx.stroke(); }
+      else { ctx.fillStyle = st.bg; ctx.fill(); if (st.boss) { ctx.strokeStyle = "#ffd34d"; ctx.lineWidth = 2; ctx.stroke(); } }
+      ctx.fillStyle = "#fff"; ctx.font = `bold ${Math.floor(s * 0.4)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(st.label, px + s / 2, py + s / 2 + 1);
+      if (st.mark && s >= 16) { // 武器の字を出したときは、凡例の文字を左下に小さく
+        const r = s * 0.17; ctx.beginPath(); ctx.arc(px + r + 1, py + s - r - 1, r, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.font = `bold ${Math.floor(r * 1.5)}px sans-serif`; ctx.fillText(st.mark, px + r + 1, py + s - r - 0.5);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const pr = map.props[y][x];
+    if (pr !== ".") {
+      const pm = map.propMarks.find(p => p.mark === pr);
+      const bw = s * 0.42;
+      ctx.globalAlpha = layer === "props" ? 1 : 0.8;
+      ctx.fillStyle = pm && pm.blocks ? "#5a3b22" : "#f2efe6"; ctx.fillRect(px + s - bw - 1, py + 1, bw, bw);
+      ctx.fillStyle = pm && pm.blocks ? "#fff" : "#222"; ctx.font = `bold ${Math.floor(bw * 0.8)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(pm ? [...pm.prop][0] : pr, px + s - bw / 2 - 1, py + 1 + bw / 2 + 1);
+      ctx.globalAlpha = 1;
+    }
+  }
+  // 線
+  ctx.strokeStyle = "rgba(0,0,0,.28)"; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= map.w; x++) { ctx.moveTo(view.ox + x * s + .5, view.oy); ctx.lineTo(view.ox + x * s + .5, view.oy + map.h * s); }
+  for (let y = 0; y <= map.h; y++) { ctx.moveTo(view.ox, view.oy + y * s + .5); ctx.lineTo(view.ox + map.w * s, view.oy + y * s + .5); }
+  ctx.stroke();
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.strokeRect(view.ox, view.oy, map.w * s, map.h * s);
+  if (rectPreview) {
+    const [x0, y0, x1, y1] = rectPreview;
+    ctx.strokeStyle = "#f0b44c"; ctx.lineWidth = 3;
+    ctx.strokeRect(view.ox + Math.min(x0, x1) * s, view.oy + Math.min(y0, y1) * s, (Math.abs(x1 - x0) + 1) * s, (Math.abs(y1 - y0) + 1) * s);
+  }
+}
+
+// ================================================================ 塗る
+const cellAt = (cx, cy) => { const x = Math.floor((cx - view.ox) / view.s), y = Math.floor((cy - view.oy) / view.s); return (x >= 0 && y >= 0 && x < map.w && y < map.h) ? [x, y] : null; };
+const gridOf = l => l === "terrain" ? map.terrain : l === "height" ? map.height : l === "place" ? map.place : map.props;
+function setCell(x, y) {
+  const g = gridOf(layer), v = sel[layer];
+  // 出撃の番号（1〜9）は1マップに1つずつ：前に置いた同じ番号は消す
+  if (layer === "place" && typeof v === "string" && v >= "1" && v <= "9")
+    for (let yy = 0; yy < map.h; yy++) for (let xx = 0; xx < map.w; xx++) if (map.place[yy][xx] === v && (xx !== x || yy !== y)) map.place[yy][xx] = ".";
+  if (g[y][x] === v) return false;
+  g[y][x] = v; return true;
+}
+function fillFrom(x, y) {
+  const g = gridOf(layer), from = g[y][x], to = sel[layer];
+  if (from === to) return;
+  const st = [[x, y]];
+  while (st.length) { const [cx, cy] = st.pop(); if (cx < 0 || cy < 0 || cx >= map.w || cy >= map.h || g[cy][cx] !== from) continue; g[cy][cx] = to; st.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]); }
+}
+function pickAt(x, y) {
+  const v = gridOf(layer)[y][x];
+  sel[layer] = v; refreshHotbar(); toast(`スポイト：${labelOf(layer, v)}`);
+  setTool("pen");
+}
+function labelOf(l, v) {
+  if (l === "terrain") { const t = terrainBy(v); return t ? t.name : v; }
+  if (l === "height") return `高さ ${v}`;
+  if (l === "place") return placeName(v);
+  if (v === ".") return "飾りなし"; const p = map.propMarks.find(x => x.mark === v); return p ? p.prop : v;
+}
+function placeName(c) {
+  if (c === ".") return "なし"; if (c === "P") return "出撃"; if (c === "1") return "出撃1（主人公）"; if (c >= "2" && c <= "9") return `出撃${c}`;
+  if (c === "E") return "いつもの敵"; if (c === "C") return "宝箱（ランダム）"; if (c === "*") return "目標のマス";
+  const n = [];
+  const u = map.units.find(x => x.mark === c); if (u) { const w = weaponOf(u); n.push((u.ally ? "味方 " : "") + (u.name || u.unit) + (w ? `・${w}` : "") + (u.boss ? "（ボス）" : "")); }
+  const f = map.features.find(x => x.mark === c); if (f) n.push(f.feature);
+  const ch = map.chests.find(x => x.mark === c); if (ch) n.push("宝箱 " + [ch.item, ch.gold ? ch.gold + "G" : ""].filter(x => x).join(" "));
+  return n.length ? n.join("＋") : c;
+}
+function showInfo(x, y) {
+  const t = terrainBy(map.terrain[y][x]);
+  const parts = [`横${x + 1}・縦${y + 1}`, t ? t.name : map.terrain[y][x], `高さ${map.height[y][x]}`];
+  if (map.place[y][x] !== ".") parts.push(placeName(map.place[y][x]));
+  if (map.props[y][x] !== ".") parts.push("飾り:" + labelOf("props", map.props[y][x]));
+  $("info").textContent = parts.join("　");
+}
+
+// 指：1本＝塗る（動かすモードなら動かす）、2本＝動かす・拡大
+const pts = new Map();
+let stroke = null, gesture = null, tapStart = null;
+stage.addEventListener("pointerdown", e => {
+  if (!map) return;
+  stage.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (pts.size === 2) { // 2本目：塗りかけをやめて、動かす・拡大へ
+    if (stroke && stroke.changed) { map = JSON.parse(stroke.before); undoStack.pop(); }
+    stroke = null; rectPreview = null; startGesture(); draw(); return;
+  }
+  if (pts.size > 2) return;
+  if (tool === "move") { startGesture(); return; }
+  // 1マス：タップした1マスにだけ置く。指を動かしたらマップを動かす（置かない）
+  if (tool === "tap") { const c0 = cellAt(e.offsetX, e.offsetY); tapStart = { x: e.offsetX, y: e.offsetY, c: c0 }; if (c0) showInfo(c0[0], c0[1]); startGesture(); return; }
+  const c = cellAt(e.offsetX, e.offsetY); if (!c) { startGesture(); return; }
+  showInfo(c[0], c[1]);
+  if (tool === "pick") { pickAt(c[0], c[1]); return; }
+  stroke = { before: snap(), changed: false, start: c, last: c };
+  pushUndo();
+  if (tool === "pen") { stroke.changed = setCell(c[0], c[1]); }
+  else if (tool === "fill") { fillFrom(c[0], c[1]); stroke.changed = true; finishStroke(); }
+  else if (tool === "rect") { rectPreview = [c[0], c[1], c[0], c[1]]; }
+  draw();
+});
+stage.addEventListener("pointermove", e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (gesture) { moveGesture(); return; }
+  if (!stroke) return;
+  const c = cellAt(e.offsetX, e.offsetY); if (!c) return;
+  showInfo(c[0], c[1]);
+  if (tool === "pen") {
+    // 速くなぞっても間が空かないように線でつなぐ
+    let [x0, y0] = stroke.last; const [x1, y1] = c; const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let i = 1; i <= n; i++) { const x = Math.round(x0 + (x1 - x0) * i / n), y = Math.round(y0 + (y1 - y0) * i / n); if (setCell(x, y)) stroke.changed = true; }
+    stroke.last = c; draw();
+  } else if (tool === "rect") { rectPreview = [stroke.start[0], stroke.start[1], c[0], c[1]]; draw(); }
+});
+function endPointer(e) {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId);
+  if (gesture) {
+    if (pts.size === 0) {
+      gesture = null;
+      if (tool === "tap" && tapStart && tapStart.c && Math.hypot(e.offsetX - tapStart.x, e.offsetY - tapStart.y) < 10) {
+        pushUndo(); if (setCell(tapStart.c[0], tapStart.c[1])) saveSoon(); else undoStack.pop(); draw();
+      }
+      tapStart = null;
+    } else { tapStart = null; startGesture(); }
+    return;
+  }
+  if (stroke) {
+    if (tool === "rect" && rectPreview) {
+      const [x0, y0, x1, y1] = rectPreview;
+      for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) if (setCell(x, y)) stroke.changed = true;
+      rectPreview = null;
+    }
+    finishStroke();
+  }
+}
+function finishStroke() { if (stroke && !stroke.changed) undoStack.pop(); if (stroke && stroke.changed) saveSoon(); stroke = null; draw(); }
+stage.addEventListener("pointerup", endPointer);
+stage.addEventListener("pointercancel", endPointer);
+function startGesture() {
+  const p = [...pts.values()];
+  const c = p.length >= 2 ? { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 } : p[0];
+  const d = p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0;
+  gesture = { c, d, s: view.s, ox: view.ox, oy: view.oy };
+}
+function moveGesture() {
+  const p = [...pts.values()];
+  const c = p.length >= 2 ? { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 } : p[0];
+  let k = 1;
+  if (p.length >= 2 && gesture.d > 0) k = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) / gesture.d;
+  const ns = Math.max(6, Math.min(120, gesture.s * k)); const kk = ns / gesture.s;
+  view.s = ns;
+  view.ox = c.x - (gesture.c.x - gesture.ox) * kk;
+  view.oy = c.y - (gesture.c.y - gesture.oy) * kk;
+  draw();
+}
+stage.addEventListener("wheel", e => { // PCのブラウザで試すとき用
+  e.preventDefault(); const k = e.deltaY < 0 ? 1.1 : 1 / 1.1; const ns = Math.max(6, Math.min(120, view.s * k)), kk = ns / view.s;
+  view.ox = e.offsetX - (e.offsetX - view.ox) * kk; view.oy = e.offsetY - (e.offsetY - view.oy) * kk; view.s = ns; draw();
+}, { passive: false });
+
+// ================================================================ 持ち物（下のバー）と全部の一覧
+function itemsFor(l) {
+  if (l === "terrain") return PAL.terrains.map(t => ({ v: t.s, name: t.name, color: t.color, label: t.s }));
+  if (l === "height") return Array.from({ length: 10 }, (_, i) => ({ v: i, name: `高さ ${i}`, color: shade("#7a8a9a", i * 0.08), label: String(i) }));
+  if (l === "place") {
+    const list = [{ v: ".", name: "消す", color: "#333", label: "×" }, { v: "P", name: "出撃", color: "#3d7bff", label: "P" }];
+    for (let i = 1; i <= 9; i++) list.push({ v: String(i), name: i === 1 ? "出撃1（主人公）" : `出撃${i}`, color: "#3d7bff", label: String(i) });
+    list.push({ v: "E", name: "いつもの敵", color: "#ff8a3d", label: "E" }, { v: "C", name: "宝箱（ランダム）", color: "#d9a520", label: "箱" }, { v: "*", name: "目標のマス", color: "#ff4fa8", label: "★" });
+    const marks = [...new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark)])];
+    for (const m of marks) { const st = placeStyle(m); list.push({ v: m, name: (st.mark ? m + " " : "") + placeName(m), color: st.bg, label: st.label, legend: true }); }
+    return list;
+  }
+  const list = [{ v: ".", name: "消す", color: "#333", label: "×" }];
+  for (const p of map.propMarks) list.push({ v: p.mark, name: p.prop + (p.blocks ? "（通れない）" : ""), color: p.blocks ? "#5a3b22" : "#cfc8b4", label: [...p.prop][0], legend: true });
+  return list;
+}
+function hotFor(l) {
+  const all = itemsFor(l), saved = hot[l];
+  if (l === "place" || l === "props") { // 凡例の文字はマップごとに変わるので、いつも全部出す（多ければ横に流す）
+    const fixed = (saved || [".", "P", "1", "E", "C", "*"]).filter(v => all.some(i => i.v === v && !i.legend));
+    return [...fixed.map(v => all.find(i => i.v === v)), ...all.filter(i => i.legend)];
+  }
+  if (!saved) return all.slice(0, l === "height" ? 10 : 8);
+  return saved.map(v => all.find(i => String(i.v) === String(v))).filter(x => x);
+}
+function slotEl(it, selected, onClick) {
+  const b = document.createElement("button"); b.className = "slot" + (selected ? " sel" : "");
+  b.innerHTML = `<div class="sw" style="background:${it.color}">${esc(it.label)}</div><div>${esc(it.name)}</div>`;
+  b.onclick = onClick; return b;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function refreshHotbar() {
+  const bar = $("hotbar"); bar.innerHTML = "";
+  const inv = document.createElement("button"); inv.className = "slot inv";
+  inv.innerHTML = `<div class="sw" style="background:#7a6230">▦</div><div>持ち物</div>`; inv.onclick = openInventory; bar.appendChild(inv);
+  for (const it of hotFor(layer)) bar.appendChild(slotEl(it, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; if (tool === "pick" || tool === "move") setTool("pen"); refreshHotbar(); }));
+}
+function openInventory() {
+  const all = itemsFor(layer), cur = hotFor(layer).map(i => String(i.v));
+  $("invTitle").textContent = { terrain: "持ち物：地形", height: "持ち物：高さ", place: "持ち物：配置", props: "持ち物：飾り" }[layer];
+  $("invHelp").textContent = layer === "place" || layer === "props"
+    ? "押すと選んで閉じます。敵・マスの特徴・中身の決まった宝箱・飾りは、下の「＋」で足すと持ち物に入ります。"
+    : "押すと選んで閉じます。長押し（右クリック）で下のバーに出す・外すを切り替えます（★がバーに出ているもの）。";
+  const g = $("invGrid"); g.innerHTML = "";
+  for (const it of all) {
+    const pinned = cur.includes(String(it.v));
+    const b = slotEl({ ...it, name: (pinned && !it.legend ? "★" : "") + it.name }, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; closeSheets(); refreshHotbar(); if (tool === "pick" || tool === "move") setTool("pen"); });
+    b.style.width = "auto";
+    b.oncontextmenu = ev => { ev.preventDefault(); if (it.legend) return; togglePin(it.v); openInventory(); };
+    let lp; b.addEventListener("touchstart", () => { lp = setTimeout(() => { lp = "done"; if (!it.legend) { togglePin(it.v); openInventory(); toast("バーを切り替えました"); } }, 550); }, { passive: true });
+    b.addEventListener("touchend", ev => { if (lp === "done") ev.preventDefault(); clearTimeout(lp); });
+    b.addEventListener("touchmove", () => clearTimeout(lp), { passive: true });
+    g.appendChild(b);
+  }
+  renderLegend();
+  openSheet("sInv");
+}
+function togglePin(v) {
+  const cur = hotFor(layer).filter(i => !i.legend).map(i => String(i.v));
+  const i = cur.indexOf(String(v)); if (i >= 0) cur.splice(i, 1); else cur.push(String(v));
+  hot[layer] = layer === "height" ? cur.map(Number) : cur;
+  LS.set(HOT_KEY, JSON.stringify(hot)); refreshHotbar();
+}
+
+// ---- 凡例（敵・マスの特徴・宝箱・飾り）
+function nextMark(used) { for (const c of MARK_CHARS) if (!used.has(c)) return c; return "?"; }
+function usedPlaceMarks() { return new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark)]); }
+function renderLegend() {
+  const L = $("legend"); L.innerHTML = "";
+  if (layer === "place") {
+    L.innerHTML = `<h3>このマップの敵・味方のゲスト</h3><div id="lgU"></div><button id="addU" style="width:100%">＋敵・味方を足す</button>
+      <h3>マスの特徴</h3><div id="lgF"></div><button id="addF" style="width:100%">＋マスの特徴を足す</button>
+      <h3>中身の決まった宝箱</h3><div id="lgC"></div><button id="addC" style="width:100%">＋宝箱を足す</button>`;
+    for (const u of map.units) $("lgU").appendChild(legendCard(u.mark, unitLine(u).slice(3), () => editUnit(u)));
+    for (const f of map.features) $("lgF").appendChild(legendCard(f.mark, f.feature, () => editFeature(f)));
+    for (const c of map.chests) $("lgC").appendChild(legendCard(c.mark, chestLine(c).slice(2), () => editChest(c)));
+    $("addU").onclick = () => { pushUndo(); const u = { mark: nextMark(usedPlaceMarks()), unit: PAL.units[0] || "山賊", level: 0, boss: false, hold: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, extra: [] }; map.units.push(u); sel.place = u.mark; editUnit(u); };
+    $("addF").onclick = () => { pushUndo(); const f = { mark: nextMark(usedPlaceMarks()), feature: PAL.features[0] || "魔法陣" }; map.features.push(f); sel.place = f.mark; editFeature(f); };
+    $("addC").onclick = () => { pushUndo(); const c = { mark: nextMark(usedPlaceMarks()), item: PAL.items[0] || "", gold: 0 }; map.chests.push(c); sel.place = c.mark; editChest(c); };
+  } else if (layer === "props") {
+    L.innerHTML = `<h3>このマップの飾り</h3><div id="lgP"></div><button id="addP" style="width:100%">＋飾りを足す</button>`;
+    for (const p of map.propMarks) $("lgP").appendChild(legendCard(p.mark, propLine(p).slice(3), () => editProp(p)));
+    $("addP").onclick = () => { pushUndo(); const d = PAL.props[0] || { name: "家", blocks: true }; const p = { mark: nextMark(new Set(map.propMarks.map(x => x.mark))), prop: d.name, blocks: !!d.blocks, yaw: 0 }; map.propMarks.push(p); sel.props = p.mark; editProp(p); };
+  }
+}
+function legendCard(mark, text, onEdit) {
+  const d = document.createElement("div"); d.className = "card";
+  d.innerHTML = `<div class="row"><b style="flex:0 0 28px;font-size:18px">${esc(mark)}</b><div style="flex:1">${esc(text)}</div><button class="small" style="flex:0 0 auto">直す</button></div>`;
+  d.querySelector("button").onclick = onEdit; return d;
+}
+// 凡例1つの編集画面。fields: [ [ラベル, 種類, 値, 選択肢] ]、onSave(値の一覧)
+function markForm(title, fields, onSave, onDelete) {
+  $("markTitle").textContent = title;
+  const body = $("markBody"); body.innerHTML = "";
+  const inputs = [];
+  fields.forEach(([lab, type, val, opts], i) => {
+    const wrap = document.createElement("div");
+    if (type === "check") {
+      wrap.innerHTML = `<label style="display:flex;align-items:center;margin-top:10px"><input type="checkbox" ${val ? "checked" : ""}>${esc(lab)}</label>`;
+    } else if (type === "list") {
+      const id = "dl" + i;
+      wrap.innerHTML = `<label>${esc(lab)}</label><input list="${id}" value="${esc(val)}"><datalist id="${id}">${(opts || []).map(o => `<option value="${esc(o)}">`).join("")}</datalist>`;
+    } else if (type === "select") {
+      wrap.innerHTML = `<label>${esc(lab)}</label><select>${opts.map(o => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    } else {
+      wrap.innerHTML = `<label>${esc(lab)}</label><input ${type === "number" ? 'type="number" inputmode="numeric"' : ""} value="${esc(val)}">`;
+    }
+    body.appendChild(wrap);
+    inputs.push(wrap.querySelector("input,select"));
+  });
+  const msg = document.createElement("div"); msg.className = "warn"; body.appendChild(msg);
+  const row = document.createElement("div"); row.className = "row"; row.style.marginTop = "12px";
+  row.innerHTML = `<button class="danger">消す</button><button class="on">決める</button>`;
+  body.appendChild(row);
+  row.children[0].onclick = () => { onDelete(); after(); };
+  row.children[1].onclick = () => {
+    const vals = inputs.map(el => el.type === "checkbox" ? el.checked : el.value.trim());
+    const err = onSave(vals); if (err) { msg.textContent = err; return; } after();
+  };
+  const after = () => { closeSheets(); refreshAll(); saveSoon(); };
+  openSheet("sMark");
+}
+function checkMark(newMark, oldMark, used) {
+  if ([...newMark].length !== 1) return "文字は1文字にしてください";
+  if (isBuiltIn(newMark)) return "「. P E C * 1〜9」は決まった意味があるので使えません";
+  if (newMark !== oldMark && used.has(newMark)) return `「${newMark}」はもう使っています（敵と特徴を同じマスにしたいときだけ、同じ文字をテキストで書いてください）`;
+  return null;
+}
+function renameMark(grid, from, to) { if (from === to) return; for (const r of grid) for (let i = 0; i < r.length; i++) if (r[i] === from) r[i] = to; if (sel.place === from) sel.place = to; if (sel.props === from) sel.props = to; }
+function editUnit(u) {
+  const names = [...PAL.units, ...PAL.bosses];
+  const w0 = weaponOf(u);
+  markForm(`敵・味方「${u.mark}」${w0 ? "　武器：" + w0 : ""}`, [
+    ["文字（配置に置く1文字）", "text", u.mark], ["元にするユニット", "list", u.unit, names], ["Lv（0＝ステージの決まり）", "number", u.level],
+    ["ボス", "check", u.boss], ["動かない", "check", u.hold], ["味方のゲスト（自軍で戦う）", "check", u.ally],
+    ["名前（画面に出す名前。空なら元の名前）", "text", u.name], ["職業（空なら元のまま）", "text", u.cls],
+    ["持ち物（「,」区切り。入れ替え）", "list", u.items, PAL.items], ["スキル（「,」区切り。足す）", "text", u.skills],
+    ["落とすもの", "list", u.drop, PAL.items], ["お金（-1＝なし）", "number", u.gold],
+  ], v => {
+    const used = usedPlaceMarks(); used.delete(u.mark);
+    const e = checkMark(v[0], u.mark, used); if (e) return e;
+    if (!v[1]) return "元にするユニットを入れてください";
+    renameMark(map.place, u.mark, v[0]);
+    Object.assign(u, { mark: v[0], unit: v[1].replace(/\s/g, ""), level: toInt(v[2], 0), boss: v[3], hold: v[4], ally: v[5], name: v[6], cls: v[7], items: v[8], skills: v[9], drop: v[10], gold: toInt(v[11], -1) });
+  }, () => { pushUndo(); map.units = map.units.filter(x => x !== u); clearMark(map.place, u.mark); });
+}
+function editFeature(f) {
+  markForm(`マスの特徴「${f.mark}」`, [["文字", "text", f.mark], ["特徴の名前", "list", f.feature, PAL.features]], v => {
+    const used = usedPlaceMarks(); used.delete(f.mark);
+    const e = checkMark(v[0], f.mark, used); if (e) return e; if (!v[1]) return "名前を入れてください";
+    renameMark(map.place, f.mark, v[0]); f.mark = v[0]; f.feature = v[1];
+  }, () => { pushUndo(); map.features = map.features.filter(x => x !== f); clearMark(map.place, f.mark); });
+}
+function editChest(c) {
+  markForm(`宝箱「${c.mark}」`, [["文字", "text", c.mark], ["アイテム（空ならお金だけ）", "list", c.item, PAL.items], ["お金（G）", "number", c.gold]], v => {
+    const used = usedPlaceMarks(); used.delete(c.mark);
+    const e = checkMark(v[0], c.mark, used); if (e) return e;
+    const gold = Math.max(0, toInt(v[2], 0)); if (!v[1] && gold <= 0) return "アイテムかお金を入れてください";
+    renameMark(map.place, c.mark, v[0]); Object.assign(c, { mark: v[0], item: v[1], gold });
+  }, () => { pushUndo(); map.chests = map.chests.filter(x => x !== c); clearMark(map.place, c.mark); });
+}
+function editProp(p) {
+  markForm(`飾り「${p.mark}」`, [["文字", "text", p.mark], ["置物", "list", p.prop, PAL.props.map(x => x.name)], ["通れない（家など）", "check", p.blocks], ["向き（0・90・180・270）", "select", String(p.yaw), ["0", "90", "180", "270"]]], v => {
+    if ([...v[0]].length !== 1 || v[0] === ".") return "文字は「.」以外の1文字にしてください";
+    if (v[0] !== p.mark && map.propMarks.some(x => x.mark === v[0])) return `「${v[0]}」はもう使っています`;
+    if (!v[1]) return "置物の名前を入れてください";
+    renameMark(map.props, p.mark, v[0]); Object.assign(p, { mark: v[0], prop: v[1].replace(/\s/g, ""), blocks: v[2], yaw: toInt(v[3], 0) });
+  }, () => { pushUndo(); map.propMarks = map.propMarks.filter(x => x !== p); clearMark(map.props, p.mark); });
+}
+function clearMark(grid, mark) {
+  const stillUsed = grid === map.place && usedPlaceMarks().has(mark);
+  if (!stillUsed) renameMark(grid, mark, ".");
+}
+
+// ================================================================ シート
+function openSheet(id) { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); $(id).classList.add("open"); }
+function closeSheets() { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); }
+document.querySelectorAll(".sheet").forEach(s => s.addEventListener("click", e => { if (e.target === s) closeSheets(); }));
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeSheets);
+document.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { const [id, d] = b.dataset.step.split(":"); const el = $(id); el.value = clampSize(toInt(el.value, 1) + Number(d)); });
+const clampSize = n => Math.max(1, Math.min(60, n));
+
+function refreshMapList() {
+  const L = $("mapList"); L.innerHTML = "";
+  const ids = Object.keys(maps).sort((a, b) => maps[b].updated - maps[a].updated);
+  if (!ids.length) L.innerHTML = `<div class="muted" style="margin:10px 0">まだマップがありません。</div>`;
+  for (const id of ids) {
+    const m = parseMap(maps[id].text).map;
+    const d = document.createElement("div"); d.className = "card";
+    const when = new Date(maps[id].updated).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    d.innerHTML = `<div><b>${esc(m.name)}</b>${id === curId ? ' <span class="okmsg">（開いている）</span>' : ""}</div>
+      <div class="muted">${m.w}×${m.h}マス　${m.objective || "いつものクリア条件"}${m.stages ? "　ステージ " + esc(m.stages) : ""}　${when}</div>
+      <div class="row"><button class="small">開く</button><button class="small">複製</button><button class="small danger">消す</button></div>`;
+    const [bo, bc, bd] = d.querySelectorAll("button");
+    bo.onclick = () => { saveNow(); openMap(id); closeSheets(); };
+    bc.onclick = () => { saveNow(); const mm = parseMap(maps[id].text).map; mm.name += "のコピー"; addMap(mm); closeSheets(); };
+    bd.onclick = () => {
+      if (bd.dataset.ok !== "1") { bd.dataset.ok = "1"; bd.textContent = "もう一度押すと消す"; return; }
+      delete maps[id]; saveAll(); cloudDelete(id);
+      if (id === curId) { curId = null; map = null; const rest = Object.keys(maps); if (rest.length) openMap(rest[0]); else newDefault(); }
+      refreshMapList();
+    };
+    L.appendChild(d);
+  }
+  $("palInfo").textContent = `今の一覧：${PAL.source || "読み込んだファイル"}（地形 ${PAL.terrains.length}・ユニット ${PAL.units.length + PAL.bosses.length}・飾り ${PAL.props.length}）`;
+}
+$("bMaps").onclick = () => { saveNow(); refreshMapList(); openSheet("sMaps"); };
+$("bNew").onclick = () => {
+  $("nName").value = "新しいマップ" + (Object.keys(maps).length + 1);
+  $("nT").innerHTML = PAL.terrains.map(t => `<option value="${esc(t.s)}">${esc(t.name)}（${esc(t.s)}）</option>`).join("");
+  openSheet("sNew");
+};
+$("bNewOk").onclick = () => {
+  saveNow();
+  const m = blankMap($("nName").value.trim() || "新しいマップ", clampSize(toInt($("nW").value, 14)), clampSize(toInt($("nH").value, 12)), $("nT").value);
+  addMap(m); closeSheets(); toast("新しいマップを作りました");
+};
+$("bImport").onclick = () => { $("impText").value = ""; openSheet("sImport"); };
+$("bImpFile").onclick = () => $("fImp").click();
+$("fImp").onchange = async e => { const f = e.target.files[0]; if (f) $("impText").value = await f.text(); e.target.value = ""; };
+$("bImpOk").onclick = () => {
+  const t = $("impText").value; if (!t.trim()) return;
+  const r = parseMap(t); saveNow(); addMap(r.map); closeSheets();
+  toast(r.warns.length ? `開きました（気になる所 ${r.warns.length}件。「渡す」で見られます）` : "開きました");
+};
+$("bPalLoad").onclick = () => $("fPal").click();
+$("fPal").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { const p = JSON.parse(await f.text()); if (!p.terrains) throw 0; PAL = Object.assign({}, DEFAULT_PALETTE, p); LS.set(PAL_KEY, JSON.stringify(PAL)); cloudPutPalette(PAL); refreshAll(); refreshMapList(); toast("ゲームの一覧を読み込みました"); }
+  catch (x) { toast("palette.json として読めませんでした"); }
+};
+$("bPalReset").onclick = () => { LS.del(PAL_KEY); cloudPutPalette(null); PAL = DEFAULT_PALETTE; refreshAll(); refreshMapList(); toast("ページの一覧に戻しました"); };
+
+// ---- マップ設定
+function openSettings() {
+  $("sName").value = map.name; $("sW").value = map.w; $("sH").value = map.h;
+  $("sStage").value = map.stages;
+  const objs = ["", ...PAL.objectives]; if (map.objective && !objs.includes(map.objective)) objs.push(map.objective);
+  $("sObj").innerHTML = objs.map(o => `<option value="${esc(o)}" ${o === map.objective ? "selected" : ""}>${o ? esc(o) : "（いつもの決まり）"}</option>`).join("");
+  const ths = ["", ...PAL.themes]; if (map.theme && !ths.includes(map.theme)) ths.push(map.theme);
+  $("sTheme").innerHTML = ths.map(o => `<option value="${esc(o)}" ${o === map.theme ? "selected" : ""}>${o ? esc(o) : "（決めない）"}</option>`).join("");
+  $("sTurns").value = map.turns; $("sLimit").value = map.limit;
+  $("sStageEnemies").checked = map.stageEnemies; $("sRandomBoss").checked = map.randomBoss; $("sNote").value = map.note;
+  renderGimmicks();
+  openSheet("sSet");
+}
+function renderGimmicks() {
+  const G = $("sGim"); G.innerHTML = "";
+  const all = [...new Set([...PAL.gimmicks, ...map.gimmicks])];
+  if (!all.length) G.innerHTML = `<span class="muted">ギミックがありません</span>`;
+  for (const g of all) { const b = document.createElement("button"); b.textContent = g; b.className = map.gimmicks.includes(g) ? "on" : ""; b.onclick = () => { pushUndo(); map.gimmicks = map.gimmicks.includes(g) ? map.gimmicks.filter(x => x !== g) : [...map.gimmicks, g]; renderGimmicks(); saveSoon(); }; G.appendChild(b); }
+}
+const bindSet = (id, f) => $(id).addEventListener("change", () => { pushUndo(); f($(id)); refreshTitle(); saveSoon(); });
+bindSet("sName", el => map.name = el.value.trim() || "名前なし");
+bindSet("sStage", el => map.stages = splitList(el.value).map(half).filter(s => /^\d+$/.test(s) && +s > 0).join(", "));
+bindSet("sObj", el => map.objective = el.value);
+bindSet("sTheme", el => map.theme = el.value);
+bindSet("sTurns", el => map.turns = Math.max(0, toInt(el.value, 0)));
+bindSet("sLimit", el => map.limit = Math.max(-1, toInt(el.value, -1)));
+bindSet("sStageEnemies", el => map.stageEnemies = el.checked);
+bindSet("sRandomBoss", el => map.randomBoss = el.checked);
+bindSet("sNote", el => map.note = el.value);
+$("bResize").onclick = () => {
+  const w = clampSize(toInt($("sW").value, map.w)), h = clampSize(toInt($("sH").value, map.h));
+  if (w === map.w && h === map.h) { toast("同じ大きさです"); return; }
+  pushUndo(); resizeMap(w, h, $("sAX").value === "l", $("sAY").value === "t");
+  refreshAll(); fitView(); saveSoon(); toast(`${w}×${h}マスにしました`);
+};
+// 大きさを変える。左・奥（上）側で増減するときは、今の中身をずらす
+function resizeMap(w, h, fromLeft, fromTop) {
+  const dx = fromLeft ? w - map.w : 0, dy = fromTop ? h - map.h : 0;
+  const re = (g, fb) => Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => { const sx = x - dx, sy = y - dy; return (sy >= 0 && sy < map.h && sx >= 0 && sx < map.w) ? g[sy][sx] : fb; }));
+  map.terrain = re(map.terrain, "."); map.height = re(map.height, 0); map.place = re(map.place, "."); map.props = re(map.props, ".");
+  map.w = w; map.h = h;
+}
+$("bSettings").onclick = openSettings;
+
+// ---- 渡す
+function outName() { return (map.name || "マップ").replace(/[\\/:*?"<>|]/g, "_") + ".txt"; }
+$("bOut").onclick = () => {
+  saveNow();
+  const text = writeMap(map), chk = checkMap(map), back = parseMap(text);
+  $("outText").value = text; $("outFile").textContent = outName();
+  $("cloudNote").style.display = cloud.db ? "block" : "none"; $("cloudName").textContent = map.name;
+  const W = $("outWarn"); W.innerHTML = "";
+  if (!chk.errs.length && !chk.warns.length) W.innerHTML = `<div class="okmsg">✔ このままゲームで読めます（${map.w}×${map.h}マス）</div>`;
+  for (const e of chk.errs) W.innerHTML += `<div class="warn">✖ ${esc(e)}</div>`;
+  for (const e of [...chk.warns, ...back.warns]) W.innerHTML += `<div class="warn" style="color:#ffc46b">△ ${esc(e)}</div>`;
+  openSheet("sOut");
+};
+$("bCopy").onclick = async () => {
+  const t = $("outText").value;
+  try { await navigator.clipboard.writeText(t); toast("コピーしました"); }
+  catch (e) { const a = $("outText"); a.removeAttribute("readonly"); a.select(); document.execCommand("copy"); a.setAttribute("readonly", ""); toast("コピーしました"); }
+};
+$("bDown").onclick = async () => {
+  if (cloud.downloads) {
+    try { await cloud.downloads.save({ filename: outName(), data: new Blob([$("outText").value], { type: "text/plain;charset=utf-8" }) }); return; }
+    catch (e) { toast("保存できませんでした。コピーを使ってください"); return; }
+  }
+  const blob = new Blob(["﻿" + $("outText").value], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = outName(); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("bShare").onclick = async () => {
+  const t = $("outText").value;
+  try {
+    const file = new File([t], outName(), { type: "text/plain" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: outName() }); return; }
+    if (navigator.share) { await navigator.share({ title: outName(), text: t }); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  $("bCopy").click(); toast("ここでは共有が使えないのでコピーしました");
+};
+
+// ================================================================ クラウドに保存（Claudeのページで開いたとき）
+// maps/<id> = { name, text, updated }。どの端末でも同じマップが見え、Claude も読める（PCに入れるとき）。
+// ページを1ファイルで開いたときなど、使えなければこの端末のブラウザだけに保存する
+const cloud = { db: null, downloads: null, state: "", busy: {}, again: {}, ready: false };
+function cloudPut(id) {
+  if (!cloud.db || !cloud.ready || !maps[id]) return;
+  if (cloud.busy[id]) { cloud.again[id] = true; return; } // 1つのマップへの書き込みは1つずつ
+  cloud.busy[id] = true; setCloudState("☁ 保存中…");
+  const r = maps[id], name = parseMap(r.text).map.name;
+  cloud.db.doc("maps/" + id).set({ name, text: r.text, updated: r.updated })
+    .then(() => setCloudState("☁ 保存済み"))
+    .catch(e => setCloudState(e && e.code === "quota_exceeded" ? "☁ いっぱいで保存できません" : "この端末だけに保存"))
+    .finally(() => { cloud.busy[id] = false; if (cloud.again[id]) { cloud.again[id] = false; cloudPut(id); } });
+}
+function cloudDelete(id) { if (cloud.db && cloud.ready) cloud.db.doc("maps/" + id).delete().catch(() => {}); }
+function cloudPutPalette(p) { if (cloud.db && cloud.ready) cloud.db.doc("config/palette").set(p ? { json: JSON.stringify(p) } : { json: "" }).catch(() => {}); }
+(async () => {
+  try {
+    if (!window.claude || !window.claude.use) return;
+    cloud.downloads = await window.claude.use("downloads").catch(() => null);
+    const db = await window.claude.use("db").catch(() => null);
+    if (!db) return;
+    cloud.db = db; setCloudState("☁ つないでいます…");
+    const timer = setTimeout(() => { if (!cloud.ready) setCloudState("☁ つながりません（この端末に保存中）"); }, 10000);
+    db.doc("config/palette").get().then(d => {
+      const j = d.exists && d.data().json; if (!j) return;
+      try { const p = JSON.parse(j); if (p && p.terrains) { PAL = p; LS.set(PAL_KEY, j); refreshAll(); } } catch (e) {}
+    }).catch(() => {});
+    db.collection("maps").onSnapshot(snap => {
+      if (snap.metadata.fromCache) return;
+      clearTimeout(timer);
+      const first = !cloud.ready; cloud.ready = true;
+      const seen = new Set();
+      let curChanged = false;
+      for (const d of snap.docs) {
+        const v = d.data(); seen.add(d.id);
+        if (!v || typeof v.text !== "string") continue;
+        const mine = maps[d.id];
+        if (!mine || (v.updated || 0) > mine.updated) { maps[d.id] = { text: v.text, updated: v.updated || Date.now() }; if (d.id === curId) curChanged = true; }
+      }
+      if (first) { for (const id of Object.keys(maps)) if (!seen.has(id)) cloudPut(id); } // この端末だけにあったマップを上げる
+      else for (const c of snap.docChanges()) if (c.type === "removed" && maps[c.doc.id] && !cloud.busy[c.doc.id]) { delete maps[c.doc.id]; if (c.doc.id === curId) curChanged = true; }
+      saveAll();
+      if (curChanged && !stroke) { if (maps[curId]) { const keep = { ...view }; map = parseMap(maps[curId].text).map; refreshAll(); view = keep; draw(); } else { const ids = Object.keys(maps); if (ids.length) openMap(ids[0]); } }
+      else if (first && !maps[curId]) { const ids = Object.keys(maps); if (ids.length) openMap(ids[0]); }
+      if (first) setCloudState("☁ 保存済み");
+      if ($("sMaps").classList.contains("open")) refreshMapList();
+    }, () => { clearTimeout(timer); setCloudState("この端末だけに保存"); cloud.db = null; });
+  } catch (e) { setCloudState(""); }
+})();
+
+// ================================================================ 画面の更新
+function setTool(t) { tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); }
+document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.querySelectorAll("[data-layer]").forEach(b => b.onclick = () => { layer = b.dataset.layer; document.querySelectorAll("[data-layer]").forEach(x => x.classList.toggle("on", x === b)); refreshHotbar(); draw(); });
+$("bUndo").onclick = undo; $("bRedo").onclick = redo; $("bFit").onclick = fitView;
+function refreshTitle() { $("title").innerHTML = map ? `${esc(map.name)}<small>${map.w}×${map.h}</small><small id="cloudState">${esc(cloud.state)}</small>` : "-"; }
+function setCloudState(t) { cloud.state = t; const el = $("cloudState"); if (el) el.textContent = t; }
+function refreshAll() { refreshTitle(); refreshHotbar(); draw(); }
+// 画面の大きさ・向きが変わったら描き直す（向きが変わったときはマップ全体が入るように合わせ直す）
+let lastLandscape = innerWidth > innerHeight;
+const stageObserver = new ResizeObserver(() => { resizeCanvas(); const l = innerWidth > innerHeight; if (l !== lastLandscape) { lastLandscape = l; fitView(); } });
+stageObserver.observe(stage);
+window.addEventListener("pagehide", saveNow);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveNow(); });
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); } if ((e.ctrlKey || e.metaKey) && e.key === "y") { e.preventDefault(); redo(); } });
+
+// Webアプリとして置いたとき：オフラインで動くようにする（Claudeのページやファイルで開いたときは何もしない）
+if (location.protocol === "https:" && !window.claude && "serviceWorker" in navigator) {
+  try { navigator.serviceWorker.register("sw.js").catch(() => {}); } catch (e) {}
+}
+function newDefault() { addMap(blankMap("新しいマップ1", 14, 12, ".")); }
+resizeCanvas();
+if (curId && maps[curId]) openMap(curId);
+else { const ids = Object.keys(maps); if (ids.length) openMap(ids[0]); else newDefault(); }
+</script>
+</body>
+</html>
