@@ -962,7 +962,7 @@ function refreshHotbar() {
   const bar = $("hotbar"); bar.innerHTML = "";
   const inv = document.createElement("button"); inv.className = "slot inv";
   inv.innerHTML = `<div class="sw" style="background:#7a6230">▦</div><div>一覧</div>`; inv.onclick = openInventory; bar.appendChild(inv);
-  for (const it of hotFor(layer)) bar.appendChild(slotEl(it, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; if (tool === "pick" || tool === "move") setTool("pen"); refreshHotbar(); }));
+  for (const it of hotFor(layer)) bar.appendChild(slotEl(it, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; if (["pick", "move", "range", "select", "paste"].includes(tool)) setTool(lastPaintTool); refreshHotbar(); }));
 }
 function openInventory() {
   const all = itemsFor(layer), cur = hotFor(layer).map(i => String(i.v));
@@ -973,7 +973,7 @@ function openInventory() {
   const g = $("invGrid"); g.innerHTML = "";
   for (const it of all) {
     const pinned = cur.includes(String(it.v));
-    const b = slotEl({ ...it, name: (pinned && !it.legend ? "★" : "") + it.name }, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; closeSheets(); refreshHotbar(); if (tool === "pick" || tool === "move") setTool("pen"); });
+    const b = slotEl({ ...it, name: (pinned && !it.legend ? "★" : "") + it.name }, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; closeSheets(); refreshHotbar(); if (["pick", "move", "range", "select", "paste"].includes(tool)) setTool(lastPaintTool); });
     b.style.width = "auto";
     b.oncontextmenu = ev => { ev.preventDefault(); if (it.legend) return; togglePin(it.v); openInventory(); };
     let lp; b.addEventListener("touchstart", () => { lp = setTimeout(() => { lp = "done"; if (!it.legend) { togglePin(it.v); openInventory(); toast("バーを切り替えました"); } }, 550); }, { passive: true });
@@ -1521,8 +1521,8 @@ function rangeAt(x, y, teams) {
 let rangeView = null, dangerOn = false, dangerCache = { ver: -1, cells: null };
 function rangeTap(x, y) {
   const r = rangeAt(x, y);
-  if (!r) { rangeView = null; showInfo(x, y); draw(); return; }
-  rangeView = { x, y };
+  if (!r) { rangeView = null; showInfo(x, y); updateBar(); draw(); return; }
+  rangeView = { x, y }; updateBar();
   const s = r.spec; $("info").textContent = `${s.name}　移動${s.move}・射程${s.min === s.max ? s.min : s.min + "〜" + s.max}　（青＝動ける／赤＝攻撃が届く）`;
   draw();
 }
@@ -1595,6 +1595,13 @@ function updateBar() {
       ["⟳ 回す", () => { clip = rotClip(clip); updateBar(); draw(); }],
       ["⇆", () => { flipClip(clip, true); draw(); }], ["⇅", () => { flipClip(clip, false); draw(); }],
       ["やめる", () => setTool("pen")],
+    ]);
+    return;
+  }
+  if (tool === "range") {
+    barButtons(rangeView ? "別の敵・出撃をタップで切り替え。何もない所をタップでも消えます" : "敵・出撃のマスをタップ", [
+      ...(rangeView ? [["✕ 範囲を消す", () => { rangeView = null; updateBar(); draw(); }]] : []),
+      ["✏ 塗るに戻る", () => setTool(lastPaintTool)],
     ]);
     return;
   }
@@ -1777,7 +1784,8 @@ $("fBak").onchange = async e => {
 };
 
 // ================================================================ 画面の更新
-function setTool(t) { tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); toolChanged(); }
+let lastPaintTool = "pen";
+function setTool(t) { if (["tap", "pen", "rect", "fill"].includes(t)) lastPaintTool = t; tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); toolChanged(); }
 document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
 document.querySelectorAll("[data-layer]").forEach(b => b.onclick = () => { layer = b.dataset.layer; document.querySelectorAll("[data-layer]").forEach(x => x.classList.toggle("on", x === b)); refreshHotbar(); draw(); });
 $("bUndo").onclick = undo; $("bRedo").onclick = redo; $("bFit").onclick = fitView;
