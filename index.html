@@ -93,7 +93,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <div id="title">-</div>
   <button id="bUndo">↶</button>
   <button id="bRedo">↷</button>
-  <button id="bOut" class="on">渡す</button>
+  <button id="bOut" class="on">Export ⇪</button>
 </div>
 <div id="main">
 <div id="stage"><canvas id="cv"></canvas><div id="info"></div><div id="dir">↑ 奥（敵側）／ ↓ 手前</div></div>
@@ -209,7 +209,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
 
 <!-- 渡す（テキストにする） -->
 <div class="sheet" id="sOut"><div class="box">
-  <h2><span>PCに渡す</span><button class="small" data-close>閉じる</button></h2>
+  <h2><span>Export（PCに渡す）</span><button class="small" data-close>閉じる</button></h2>
   <div id="outWarn"></div>
   <div class="card" id="cloudNote" style="display:none">☁ このマップはクラウドに保存されています。Claudeに「スマホで作ったマップ（<b id="cloudName"></b>）をPCに入れて」と頼むと、そのままPCのストーリーマップに入れます。</div>
   <div class="row" style="margin-top:8px"><button id="bCopy" class="on">コピー</button><button id="bShare">共有する</button><button id="bDown">保存（.txt）</button></div>
@@ -1028,7 +1028,7 @@ $("fImp").onchange = async e => { const f = e.target.files[0]; if (f) $("impText
 $("bImpOk").onclick = () => {
   const t = $("impText").value; if (!t.trim()) return;
   const r = parseMap(t); saveNow(); addMap(r.map); closeSheets();
-  toast(r.warns.length ? `開きました（気になる所 ${r.warns.length}件。「渡す」で見られます）` : "開きました");
+  toast(r.warns.length ? `開きました（気になる所 ${r.warns.length}件。「Export」で見られます）` : "開きました");
 };
 $("bPalLoad").onclick = () => $("fPal").click();
 $("fPal").onchange = async e => {
