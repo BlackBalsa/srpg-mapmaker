@@ -1723,7 +1723,7 @@ function mapStats() {
   const row = (k, v) => out.push([k, v]);
   const fmt = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join("、") || "なし";
   row("大きさ", `横${W}・縦${H}（${W * H}マス）`);
-  row("地形", Object.entries(terr).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${(terrainBy(t) || { name: t }).name} ${Math.round(n * 100 / (W * H))}%`).join("、"));
+  row("地形", Object.entries(terr).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${(terrainBy(t) || { name: t }).name} ${n}マス（${Math.round(n * 100 / (W * H))}%）`).join("、"));
   row("クリア条件", (map.objective || "いつもの決まり") + (map.turns ? `（${map.turns}ターン）` : ""));
   row("出撃できる人数", `${starts}人${count["1"] ? "" : "（主人公の 1 がありません）"}`);
   row("敵", `${enemyTotal}体（いつもの敵 E ×${count.E || 0}）`);
