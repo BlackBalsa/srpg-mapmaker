@@ -223,7 +223,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <canvas id="cv3" style="position:absolute;inset:0"></canvas>
   <div style="position:absolute;left:0;right:0;top:0;display:flex;gap:6px;padding:8px;padding-top:max(8px,env(safe-area-inset-top));align-items:center">
     <button id="v3Close">← 戻る</button><div style="flex:1;font-weight:bold" id="v3Title"></div>
-    <button id="v3L">⟲</button><button id="v3R">⟳</button><button id="v3Top">真上</button>
+    <button id="v3L">⟲</button><button id="v3R">⟳</button><button id="v3Top">リセット</button>
   </div>
   <div class="muted" style="position:absolute;left:10px;bottom:calc(8px + env(safe-area-inset-bottom))">1本指で回す・上下で傾き　2本指で拡大</div>
 </div>
@@ -1244,7 +1244,7 @@ $("b3d").onclick = open3d;
 $("v3Close").onclick = () => { v3el.style.display = "none"; };
 $("v3L").onclick = () => { v3.yaw -= Math.PI / 2; draw3d(); };
 $("v3R").onclick = () => { v3.yaw += Math.PI / 2; draw3d(); };
-$("v3Top").onclick = () => { v3.pitch = v3.pitch > 1.5 ? 0.75 : 1.57; draw3d(); };
+$("v3Top").onclick = () => { v3.yaw = 0; v3.pitch = 1.57; v3.zoom = 1; draw3d(); }; // リセット：真上から、奥（敵側）が上、まっすぐ
 addEventListener("resize", () => { if (v3el.style.display !== "none") size3d(); });
 
 // ================================================================ 画面の更新
