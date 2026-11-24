@@ -67,8 +67,16 @@ label{display:block;margin:10px 0 4px;color:var(--sub);font-size:13px}
 .stepper input{text-align:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{min-height:34px;padding:4px 10px;font-size:13px}
+#bar{position:absolute;left:6px;right:6px;bottom:22px;display:none;flex-wrap:wrap;gap:5px;align-items:center;background:rgba(42,47,55,.94);border:1px solid var(--line);border-radius:12px;padding:6px;z-index:2}
+#bar button{min-height:34px;padding:4px 9px;font-size:13px}
+#bar .hint{flex:1 1 100%;font-size:12px;color:var(--sub)}
+.blk{display:flex;gap:10px;align-items:center;width:100%;text-align:left;margin:5px 0}
+.blk canvas{flex:0 0 auto;border-radius:4px}
+.stat{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+.stat b{color:var(--sub);font-weight:normal;flex:0 0 auto}
+.stat span{text-align:right}
 #toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:#000c;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;display:none;z-index:20}
-/* 横画面：マップを左に大きく、道具・持ち物を右の列に */
+/* 横画面：マップを左に大きく、道具・一覧を右の列に */
 @media (orientation:landscape) and (max-height:600px){
   #top{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right));padding-top:4px;padding-bottom:4px}
   #top button{min-height:34px;padding:4px 10px}
@@ -96,7 +104,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <button id="bOut" class="on">Export ⇪</button>
 </div>
 <div id="main">
-<div id="stage"><canvas id="cv"></canvas><div id="info"></div><div id="dir">↑ 奥（敵側）／ ↓ 手前</div></div>
+<div id="stage"><canvas id="cv"></canvas><div id="info"></div><div id="bar"></div><div id="dir">↑ 奥（敵側）／ ↓ 手前</div></div>
 <div id="panel">
 <div id="tools">
   <button data-tool="tap">👆 1マス</button>
@@ -105,6 +113,12 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <button data-tool="fill">🪣 塗りつぶし</button>
   <button data-tool="pick">💧 スポイト</button>
   <button data-tool="move">✋ 動かす</button>
+  <button data-tool="select">⬚ 選ぶ</button>
+  <button id="bMirror">⇋ 対称：なし</button>
+  <button id="bBlocks">🧩 部品</button>
+  <button data-tool="range">👣 移動範囲</button>
+  <button id="bDanger">⚠ 敵の範囲</button>
+  <button id="bStats">📊 集計</button>
   <button id="bFit">⤢ 全体</button>
   <button id="b3d">🧊 3Dで見る</button>
   <button id="bSettings">⚙ マップ設定</button>
@@ -124,6 +138,10 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <h2><span>メニュー</span><button class="small" data-close>閉じる</button></h2>
   <button id="bMyMaps" class="on" style="width:100%;min-height:52px;font-size:16px">📂 作成マップ（<span id="mapCount">0</span>）</button>
   <div class="row" style="margin-top:8px"><button id="bNew">＋新しいマップ</button><button id="bImport">テキストから開く</button></div>
+  <h3>バックアップ（全部のマップを1ファイルに）</h3>
+  <div class="muted">機種変更や消えたときのために。保存したファイル（.json）を「戻す」で読むと、新しいほうのマップが残ります。</div>
+  <div class="row" style="margin-top:6px"><button id="bBackup" class="small">💾 全部を保存</button><button id="bRestore" class="small">📥 バックアップから戻す</button></div>
+  <input type="file" id="fBak" accept=".json,application/json,text/plain" style="display:none">
   <h3>ゲームの一覧（地形・敵・飾りなど）</h3>
   <div class="muted" id="palInfo"></div>
   <div class="row" style="margin-top:6px"><button id="bPalLoad" class="small">palette.json を読む</button><button id="bPalReset" class="small">ページの一覧に戻す</button></div>
@@ -193,9 +211,9 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <label>説明（メモ。ゲームには出ない）</label><textarea id="sNote" rows="3" style="font-family:inherit;font-size:14px"></textarea>
 </div></div>
 
-<!-- 持ち物（全部の一覧）・凡例 -->
+<!-- 一覧（置ける物の全部）・凡例 -->
 <div class="sheet" id="sInv"><div class="box">
-  <h2><span id="invTitle">持ち物</span><button class="small" data-close>閉じる</button></h2>
+  <h2><span id="invTitle">一覧</span><button class="small" data-close>閉じる</button></h2>
   <div class="muted" id="invHelp"></div>
   <div class="grid" id="invGrid" style="margin-top:8px"></div>
   <div id="legend"></div>
@@ -218,6 +236,20 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <textarea id="outText" rows="14" readonly></textarea>
 </div></div>
 
+<!-- 集計 -->
+<div class="sheet" id="sStats"><div class="box">
+  <h2><span>マップの集計</span><button class="small" data-close>閉じる</button></h2>
+  <div id="statsBody"></div>
+</div></div>
+
+<!-- 部品（ゲームのマップ部品を、はんこのように置く） -->
+<div class="sheet" id="sBlocks"><div class="box">
+  <h2><span>部品から置く</span><button class="small" data-close>閉じる</button></h2>
+  <div class="muted">ゲームがランダムなマップを作るときの 4×4 の部品です。押すと「置く」になるので、置きたい所をタップしてください（回す・反転もできます）。P＝出撃、E＝いつもの敵、箱＝宝箱。</div>
+  <div class="chips" id="blkThemes" style="margin-top:8px"></div>
+  <div id="blkList"></div>
+</div></div>
+
 <!-- 3Dで見る（見るだけ。指で回す・2本指で拡大） -->
 <div id="v3" style="position:fixed;inset:0;z-index:15;background:#15181d;display:none;touch-action:none">
   <canvas id="cv3" style="position:absolute;inset:0"></canvas>
@@ -235,42 +267,93 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
 const DEFAULT_PALETTE = {
   "source": "ページの初期値（2026-11-24 のコードから）",
   "terrains": [
-    {"s":".","name":"平地","color":"#8fc261","passable":true},
-    {"s":"T","name":"森","color":"#549445","passable":true},
-    {"s":"^","name":"山","color":"#99856b","passable":true},
-    {"s":"F","name":"砦","color":"#b3a899","passable":true},
-    {"s":"~","name":"水","color":"#4080d9","passable":false},
-    {"s":"#","name":"壁","color":"#595961","passable":false},
-    {"s":"=","name":"道","color":"#c7ad80","passable":true},
-    {"s":":","name":"砂","color":"#e6d18c","passable":true},
-    {"s":"W","name":"深い森","color":"#336b33","passable":true},
-    {"s":"G","name":"門","color":"#8c6647","passable":true},
-    {"s":"H","name":"木の橋","color":"#9e7852","passable":true},
-    {"s":"B","name":"石の橋","color":"#a8a399","passable":true}
+    {"s": ".", "name": "平地", "color": "#8fc261", "passable": true, "cost": 1},
+    {"s": "T", "name": "森", "color": "#549445", "passable": true, "cost": 2},
+    {"s": "^", "name": "山", "color": "#99856b", "passable": true, "cost": 3},
+    {"s": "F", "name": "砦", "color": "#b3a899", "passable": true, "cost": 1},
+    {"s": "~", "name": "水", "color": "#4080d9", "passable": false, "cost": 1},
+    {"s": "#", "name": "壁", "color": "#595961", "passable": false, "cost": 1},
+    {"s": "=", "name": "道", "color": "#c7ad80", "passable": true, "cost": 1},
+    {"s": ":", "name": "砂", "color": "#e6d18c", "passable": true, "cost": 2},
+    {"s": "W", "name": "深い森", "color": "#336b33", "passable": true, "cost": 3},
+    {"s": "G", "name": "門", "color": "#8c6647", "passable": true, "cost": 1},
+    {"s": "H", "name": "木の橋", "color": "#9e7852", "passable": true, "cost": 1},
+    {"s": "B", "name": "石の橋", "color": "#a8a399", "passable": true, "cost": 1}
   ],
-  "units": ["山賊","弓兵","兵士","アレン","ベル","クレア","ドラン","ミラ","セージ"],
-  "bosses": ["号令の将ヴァルガ","角笛の頭目ザイル","崩岩の巨兵ドルガ","刻守のセレス"],
-  "items": ["ソー","鋼のソー","ヤスリ","ドリル","劈開ノミ","投げノミ","ハンマー","手斧","槍","弓","くさび弓","研磨盤","衝撃盤","劈開盤","回復薬","宝石の粉"],
-  "features": ["魔法陣","砦の守り"],
-  "props": [{"name":"家","blocks":true},{"name":"像","blocks":false},{"name":"柵","blocks":false}],
-  "objectives": ["敵全滅","ボス撃破","本陣制圧","指定ターン防衛","指定ターン生存","指定マス到達"],
-  "themes": ["平原","森","砂漠","砦","鉱山","台座種族の都市"],
+  "units": ["山賊", "弓兵", "兵士", "アレン", "ベル", "クレア", "ドラン", "ミラ", "セージ"],
+  "bosses": ["号令の将ヴァルガ", "角笛の頭目ザイル", "崩岩の巨兵ドルガ", "刻守のセレス"],
+  "items": ["ソー", "鋼のソー", "ヤスリ", "ドリル", "劈開ノミ", "投げノミ", "ハンマー", "手斧", "槍", "弓", "くさび弓", "研磨盤", "衝撃盤", "劈開盤", "回復薬", "宝石の粉"],
+  "features": ["魔法陣", "砦の守り"],
+  "props": [
+    {"name": "家", "blocks": true},
+    {"name": "像", "blocks": false},
+    {"name": "柵", "blocks": false}
+  ],
+  "objectives": ["敵全滅", "ボス撃破", "本陣制圧", "指定ターン防衛", "指定ターン生存", "指定マス到達"],
+  "themes": ["平原", "森", "砂漠", "砦", "鉱山", "台座種族の都市"],
   "gimmicks": ["砦の守り"],
   "weapons": [
-    {"name":"剣","glyph":"剣"},{"name":"槍","glyph":"槍"},{"name":"槌","glyph":"槌"},{"name":"弓","glyph":"弓"},{"name":"杖","glyph":"杖"},{"name":"鑑定眼","glyph":"眼"}
+    {"name": "剣", "glyph": "剣"},
+    {"name": "槍", "glyph": "槍"},
+    {"name": "槌", "glyph": "槌"},
+    {"name": "弓", "glyph": "弓"},
+    {"name": "杖", "glyph": "杖"},
+    {"name": "鑑定眼", "glyph": "眼"}
   ],
-  "itemWeapons": {
-    "ソー":"剣","鋼のソー":"剣","ヤスリ":"剣","ドリル":"剣","くさび刃":"剣","峰打ちソー":"剣",
-    "劈開ノミ":"槍","投げノミ":"槍","平ノミ":"槍","石突きノミ":"槍","槍":"槍",
-    "ハンマー":"槌","ピックハンマー":"槌","目立てハンマー":"槌","手斧":"槌",
-    "くさび弓":"弓","ドリル弓":"弓","つぶて弓":"弓","弓":"弓",
-    "研磨盤":"杖","衝撃盤":"杖","劈開盤":"杖",
-    "手当て":"鑑定眼","ひびの修復":"鑑定眼","宝石力の補給":"鑑定眼","磨き上げ":"鑑定眼","お墨付き":"鑑定眼","見抜く":"鑑定眼","傷を見つける":"鑑定眼"
-  },
-  "unitWeapons": {
-    "アレン":"剣","ベル":"槍","クレア":"弓","ドラン":"槌","ミラ":"杖","セージ":"鑑定眼","山賊":"槌","弓兵":"弓","兵士":"槍",
-    "号令の将ヴァルガ":"槍","角笛の頭目ザイル":"剣","崩岩の巨兵ドルガ":"槌","刻守のセレス":"杖"
-  }
+  "itemWeapons": {"ソー": "剣", "鋼のソー": "剣", "ヤスリ": "剣", "ドリル": "剣", "くさび刃": "剣", "峰打ちソー": "剣", "劈開ノミ": "槍", "投げノミ": "槍", "平ノミ": "槍", "石突きノミ": "槍", "槍": "槍", "ハンマー": "槌", "ピックハンマー": "槌", "目立てハンマー": "槌", "手斧": "槌", "くさび弓": "弓", "ドリル弓": "弓", "つぶて弓": "弓", "弓": "弓", "研磨盤": "杖", "衝撃盤": "杖", "劈開盤": "杖", "手当て": "鑑定眼", "ひびの修復": "鑑定眼", "宝石力の補給": "鑑定眼", "磨き上げ": "鑑定眼", "お墨付き": "鑑定眼", "見抜く": "鑑定眼", "傷を見つける": "鑑定眼"},
+  "unitWeapons": {"アレン": "剣", "ベル": "槍", "クレア": "弓", "ドラン": "槌", "ミラ": "杖", "セージ": "鑑定眼", "山賊": "槌", "弓兵": "弓", "兵士": "槍", "号令の将ヴァルガ": "槍", "角笛の頭目ザイル": "剣", "崩岩の巨兵ドルガ": "槌", "刻守のセレス": "杖"},
+  "unitMoves": {"アレン": 5, "ベル": 7, "クレア": 5, "ドラン": 4, "ミラ": 5, "セージ": 5, "山賊": 5, "弓兵": 5, "兵士": 4, "号令の将ヴァルガ": 4, "角笛の頭目ザイル": 5, "崩岩の巨兵ドルガ": 3, "刻守のセレス": 4},
+  "itemRanges": {"ソー": [1, 1], "鋼のソー": [1, 1], "ヤスリ": [1, 1], "ドリル": [1, 1], "くさび刃": [1, 1], "峰打ちソー": [1, 1], "劈開ノミ": [1, 1], "投げノミ": [1, 2], "平ノミ": [1, 1], "石突きノミ": [1, 1], "ハンマー": [1, 1], "ピックハンマー": [1, 1], "目立てハンマー": [1, 1], "くさび弓": [2, 2], "ドリル弓": [2, 2], "つぶて弓": [2, 2], "研磨盤": [1, 2], "衝撃盤": [1, 2], "劈開盤": [1, 2], "手斧": [1, 1], "槍": [1, 1], "弓": [2, 2], "手当て": [1, 1], "ひびの修復": [1, 1], "宝石力の補給": [1, 1], "磨き上げ": [1, 1], "お墨付き": [1, 1], "見抜く": [1, 2], "傷を見つける": [1, 2]},
+  "rules": {"useHeights": false, "climb": 1, "drop": 1},
+  "rangeDefaults": {"move": 5, "min": 1, "max": 1, "weapons": {"弓": [2, 2], "杖": [1, 2], "鑑定眼": [1, 2]}},
+  "blocks": [
+    {"name": "野営地", "role": "PlayerStart", "terrain": [".?.T", ".PP.", "PPP.", ".P.."], "heights": ["0000", "0000", "0000", "0000"], "themes": []},
+    {"name": "丘のふもと", "role": "PlayerStart", "terrain": ["T..^", ".PP.", "PP..", ".PP?"], "heights": ["0001", "0000", "0000", "0000"], "themes": []},
+    {"name": "街道の野営地", "role": "PlayerStart", "terrain": [".=?.", ".=P.", "P=PP", ".PP."], "heights": [], "themes": []},
+    {"name": "敵の砦", "role": "EnemyBase", "terrain": [".EE.", "EF.E", ".E.?", "..T."], "heights": ["0110", "0110", "0000", "0000"], "themes": []},
+    {"name": "山賊の隠れ家", "role": "EnemyBase", "terrain": ["^^E.", "^E.E", ".EC.", "?..T"], "heights": ["2100", "1000", "0000", "0000"], "themes": []},
+    {"name": "街道沿いの敵陣", "role": "EnemyBase", "terrain": ["E.E?", ".EFE", ".=E.", "?=.."], "heights": [], "themes": []},
+    {"name": "土の道（まっすぐ）", "role": "Road", "terrain": ["?=..", ".=.?", ".=..", "?=.."], "heights": [], "themes": []},
+    {"name": "土の道（曲がり角）", "role": "Road", "terrain": ["?...", ".===", ".=.?", "?=.."], "heights": [], "themes": []},
+    {"name": "土の道（分かれ道）", "role": "Road", "terrain": [".=..", ".===", ".=.?", "?=.."], "heights": [], "themes": []},
+    {"name": "土の道（十字路）", "role": "Road", "terrain": ["?=..", "====", ".=.?", ".=.."], "heights": [], "themes": []},
+    {"name": "小さな丘", "role": "Normal", "terrain": ["..?.", ".^^.", ".^C.", "T..."], "heights": ["0000", "0120", "0110", "0000"], "themes": []},
+    {"name": "開けた平地", "role": "Normal", "terrain": ["....", ".?..", "..E.", "...."], "heights": [], "themes": []},
+    {"name": "高台", "role": "Normal", "terrain": ["TT^^", ".?^^", "...^", "E..."], "heights": ["0111", "0121", "0011", "0000"], "themes": []},
+    {"name": "森の小道", "role": "Normal", "terrain": [".TT.", ".T..", "..T?", "T..."], "heights": [""], "themes": ["平原", "森"]},
+    {"name": "川と浅瀬", "role": "Obstacle", "terrain": ["..?.", "~~.~", "~~.~", "..T."], "heights": [""], "themes": ["平原", "森"]},
+    {"name": "池のほとり", "role": "Plaza", "terrain": [".~~.", "~~C.", ".~..", "..?T"], "heights": [""], "themes": ["平原", "森"]},
+    {"name": "段々畑", "role": "Normal", "terrain": ["....", ".?..", "..T.", "...."], "heights": ["1111", "1111", "0000", "0000"], "themes": ["平原"]},
+    {"name": "平原の街道", "role": "Road", "terrain": ["T=..", ".=..", ".=.T", ".=.."], "heights": [""], "themes": ["平原"]},
+    {"name": "街道の橋", "role": "Road", "terrain": [".=..", "~=~~", "~=~~", ".=.?"], "heights": [""], "themes": ["平原", "森"]},
+    {"name": "草原の広場", "role": "Plaza", "terrain": ["....", ".C?.", "..E.", "?..."], "heights": [""], "themes": ["平原"]},
+    {"name": "森の砦", "role": "Normal", "terrain": ["T.T.", ".F.?", "T..T", ".E.."], "heights": [""], "themes": ["森"]},
+    {"name": "森の小径（まっすぐ）", "role": "Road", "terrain": ["T=WT", "W=.T", "T=TW", ".=T."], "heights": [""], "themes": ["森"]},
+    {"name": "森の小径（曲がり角）", "role": "Road", "terrain": ["WTT.", "T===", "W=TW", "T=.T"], "heights": [""], "themes": ["森"]},
+    {"name": "深い森", "role": "Obstacle", "terrain": ["WWT.", "WW?T", "TW.W", ".TWW"], "heights": [""], "themes": ["森"]},
+    {"name": "木立", "role": "Normal", "terrain": [".T?.", "TT..", "..TT", "?.T."], "heights": [""], "themes": ["森"]},
+    {"name": "森の空き地", "role": "Plaza", "terrain": ["T..T", ".C?.", "..E.", "T..T"], "heights": [""], "themes": ["森"]},
+    {"name": "キャラバン道（まっすぐ）", "role": "Road", "terrain": [":=::", "?=:^", ":=::", ":=?:"], "heights": ["0000", "0001", "0000", "0000"], "themes": ["砂漠"]},
+    {"name": "キャラバン道（曲がり角）", "role": "Road", "terrain": ["::?:", ":===", ":=::", "?=:^"], "heights": ["0000", "0000", "0000", "0001"], "themes": ["砂漠"]},
+    {"name": "オアシスの十字路", "role": "Road", "terrain": [":=::", "====", "~=.:", "~=:?"], "heights": [""], "themes": ["砂漠"]},
+    {"name": "砂丘", "role": "Obstacle", "terrain": [":^^:", "^^^:", ":^?:", "::::"], "heights": ["0110", "1221", "0110", "0000"], "themes": ["砂漠"]},
+    {"name": "砂原", "role": "Normal", "terrain": ["::?:", ":..:", "?::.", "::::"], "heights": [""], "themes": ["砂漠"]},
+    {"name": "オアシス", "role": "Plaza", "terrain": [":.:.", ".~~C", ".~~.", ":.E:"], "heights": [""], "themes": ["砂漠"]},
+    {"name": "砂漠の遺跡", "role": "EnemyBase", "terrain": ["#E.#", "E.FE", ".=E.", ":=::"], "heights": [""], "themes": ["砂漠"]},
+    {"name": "岩場", "role": "Obstacle", "terrain": ["#..#", "..E.", ".#..", "?..#"], "heights": [""], "themes": ["砂漠", "鉱山"]},
+    {"name": "谷間", "role": "Obstacle", "terrain": ["#..#", "#.?#", "#..#", "#E.#"], "heights": [""], "themes": ["鉱山"]},
+    {"name": "坑道の入口", "role": "Normal", "terrain": ["^^..", "^F.?", "...#", "?.E."], "heights": ["1100", "1000", "0000", "0000"], "themes": ["鉱山"]},
+    {"name": "鉱脈", "role": "Plaza", "terrain": ["#..^", ".C?.", "..E.", "^..#"], "heights": ["0001", "0000", "0000", "1000"], "themes": ["鉱山"]},
+    {"name": "坑道の線路", "role": "Road", "terrain": ["#=.^", ".=.?", "F=..", ".=.#"], "heights": ["0001", "0000", "0000", "0000"], "themes": ["鉱山"]},
+    {"name": "石畳の通り", "role": "Road", "terrain": [".=.#", "F=..", ".=.F", "#=.."], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "石畳の角", "role": "Road", "terrain": ["#..F", ".===", ".=.#", "F=.."], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "石畳の十字路", "role": "Road", "terrain": [".=.F", "====", "#=..", ".=.#"], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "城門の通り", "role": "Road", "terrain": ["#=##", ".G..", ".=.F", ".=.."], "heights": [""], "themes": ["砦"]},
+    {"name": "城壁の角", "role": "Obstacle", "terrain": ["##.#", "#.?.", "#.F.", "...."], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "練兵場", "role": "Plaza", "terrain": ["F..F", ".C?.", "..E.", "F..F"], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "兵舎", "role": "Normal", "terrain": ["#..#", ".F?.", ".E..", "#..#"], "heights": [""], "themes": ["砦", "台座種族の都市"]},
+    {"name": "城の中庭", "role": "EnemyBase", "terrain": ["#EE#", "EFFE", ".=E.", "#=.#"], "heights": [""], "themes": ["砦", "台座種族の都市"]}
+  ]
 };
 /*PALETTE-END*/
 
@@ -517,7 +600,7 @@ function checkMap(m) {
     const pr = m.props[y][x]; if (pr !== "." && !propMarks.has(pr)) unknownPr.add(pr);
   }
   if (unknownT.size) errs.push(`知らない地形の記号：${[...unknownT].join(" ")}`);
-  if (unknownP.size) errs.push(`配置に、凡例にない文字：${[...unknownP].join(" ")}（配置の持ち物から足してください）`);
+  if (unknownP.size) errs.push(`配置に、凡例にない文字：${[...unknownP].join(" ")}（配置の「一覧」から足してください）`);
   if (unknownPr.size) errs.push(`飾りの配置に、凡例にない文字：${[...unknownPr].join(" ")}`);
   if (!starts.length) errs.push("出撃位置（P か 1〜9）がありません");
   const allNames = [...PAL.units, ...PAL.bosses];
@@ -559,7 +642,7 @@ function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 let saveTimer = null;
-function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
+function saveSoon() { mapVer++; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
 function saveNow() {
   if (!map || !curId) return;
   const text = writeMap(map);
@@ -674,6 +757,7 @@ function draw() {
   for (let y = 0; y <= map.h; y++) { ctx.moveTo(view.ox, view.oy + y * s + .5); ctx.lineTo(view.ox + map.w * s, view.oy + y * s + .5); }
   ctx.stroke();
   ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.strokeRect(view.ox, view.oy, map.w * s, map.h * s);
+  drawOverlays();
   drawRulers(r);
   if (rectPreview) {
     const [x0, y0, x1, y1] = rectPreview;
@@ -708,7 +792,7 @@ function drawRulers(r) {
 // ================================================================ 塗る
 const cellAt = (cx, cy) => { const x = Math.floor((cx - view.ox) / view.s), y = Math.floor((cy - view.oy) / view.s); return (x >= 0 && y >= 0 && x < map.w && y < map.h) ? [x, y] : null; };
 const gridOf = l => l === "terrain" ? map.terrain : l === "height" ? map.height : l === "place" ? map.place : map.props;
-function setCell(x, y) {
+function setCellOne(x, y) {
   const g = gridOf(layer), v = sel[layer];
   // 出撃の番号（1〜9）は1マップに1つずつ：前に置いた同じ番号は消す
   if (layer === "place" && typeof v === "string" && v >= "1" && v <= "9")
@@ -716,7 +800,7 @@ function setCell(x, y) {
   if (g[y][x] === v) return false;
   g[y][x] = v; return true;
 }
-function fillFrom(x, y) {
+function fillOne(x, y) {
   const g = gridOf(layer), from = g[y][x], to = sel[layer];
   if (from === to) return;
   const st = [[x, y]];
@@ -755,20 +839,21 @@ function showInfo(x, y) {
 const pts = new Map();
 let stroke = null, gesture = null, tapStart = null;
 stage.addEventListener("pointerdown", e => {
-  if (!map) return;
+  if (!map || e.target !== cv) return;
   stage.setPointerCapture(e.pointerId);
   pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
   if (pts.size === 2) { // 2本目：塗りかけをやめて、動かす・拡大へ
     if (stroke && stroke.changed) { map = JSON.parse(stroke.before); undoStack.pop(); }
-    stroke = null; rectPreview = null; startGesture(); draw(); return;
+    stroke = null; rectPreview = null; selDrag = null; startGesture(); draw(); return;
   }
   if (pts.size > 2) return;
   if (tool === "move") { startGesture(); return; }
   // 1マス：タップした1マスにだけ置く。指を動かしたらマップを動かす（置かない）
-  if (tool === "tap") { const c0 = cellAt(e.offsetX, e.offsetY); tapStart = { x: e.offsetX, y: e.offsetY, c: c0 }; if (c0) showInfo(c0[0], c0[1]); startGesture(); return; }
+  if (tool === "tap" || tool === "range" || tool === "paste") { const c0 = cellAt(e.offsetX, e.offsetY); tapStart = { x: e.offsetX, y: e.offsetY, c: c0 }; if (c0) showInfo(c0[0], c0[1]); startGesture(); return; }
   const c = cellAt(e.offsetX, e.offsetY); if (!c) { startGesture(); return; }
   showInfo(c[0], c[1]);
   if (tool === "pick") { pickAt(c[0], c[1]); return; }
+  if (tool === "select") { selDrag = [c[0], c[1], c[0], c[1]]; selRect = null; updateBar(); draw(); return; }
   stroke = { before: snap(), changed: false, start: c, last: c };
   pushUndo();
   if (tool === "pen") { stroke.changed = setCell(c[0], c[1]); }
@@ -780,6 +865,7 @@ stage.addEventListener("pointermove", e => {
   if (!pts.has(e.pointerId)) return;
   pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
   if (gesture) { moveGesture(); return; }
+  if (selDrag) { const c = cellAt(e.offsetX, e.offsetY); if (c) { selDrag[2] = c[0]; selDrag[3] = c[1]; showInfo(c[0], c[1]); draw(); } return; }
   if (!stroke) return;
   const c = cellAt(e.offsetX, e.offsetY); if (!c) return;
   showInfo(c[0], c[1]);
@@ -796,13 +882,16 @@ function endPointer(e) {
   if (gesture) {
     if (pts.size === 0) {
       gesture = null;
-      if (tool === "tap" && tapStart && tapStart.c && Math.hypot(e.offsetX - tapStart.x, e.offsetY - tapStart.y) < 10) {
-        pushUndo(); if (setCell(tapStart.c[0], tapStart.c[1])) saveSoon(); else undoStack.pop(); draw();
+      if (tapStart && tapStart.c && Math.hypot(e.offsetX - tapStart.x, e.offsetY - tapStart.y) < 10) {
+        if (tool === "tap") { pushUndo(); if (setCell(tapStart.c[0], tapStart.c[1])) saveSoon(); else undoStack.pop(); draw(); }
+        else if (tool === "range") rangeTap(tapStart.c[0], tapStart.c[1]);
+        else if (tool === "paste") { pasteAt = tapStart.c; updateBar(); draw(); }
       }
       tapStart = null;
     } else { tapStart = null; startGesture(); }
     return;
   }
+  if (selDrag) { const [x0, y0, x1, y1] = selDrag; selRect = [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]; selDrag = null; updateBar(); draw(); return; }
   if (stroke) {
     if (tool === "rect" && rectPreview) {
       const [x0, y0, x1, y1] = rectPreview;
@@ -837,7 +926,7 @@ stage.addEventListener("wheel", e => { // PCのブラウザで試すとき用
   view.ox = e.offsetX - (e.offsetX - view.ox) * kk; view.oy = e.offsetY - (e.offsetY - view.oy) * kk; view.s = ns; draw();
 }, { passive: false });
 
-// ================================================================ 持ち物（下のバー）と全部の一覧
+// ================================================================ 置く物（下のバー）と全部の一覧
 function itemsFor(l) {
   if (l === "terrain") return PAL.terrains.map(t => ({ v: t.s, name: t.name, color: t.color, label: t.s }));
   if (l === "height") return Array.from({ length: 10 }, (_, i) => ({ v: i, name: `高さ ${i}`, color: shade("#7a8a9a", i * 0.08), label: String(i) }));
@@ -871,14 +960,14 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 function refreshHotbar() {
   const bar = $("hotbar"); bar.innerHTML = "";
   const inv = document.createElement("button"); inv.className = "slot inv";
-  inv.innerHTML = `<div class="sw" style="background:#7a6230">▦</div><div>持ち物</div>`; inv.onclick = openInventory; bar.appendChild(inv);
+  inv.innerHTML = `<div class="sw" style="background:#7a6230">▦</div><div>一覧</div>`; inv.onclick = openInventory; bar.appendChild(inv);
   for (const it of hotFor(layer)) bar.appendChild(slotEl(it, String(sel[layer]) === String(it.v), () => { sel[layer] = it.v; if (tool === "pick" || tool === "move") setTool("pen"); refreshHotbar(); }));
 }
 function openInventory() {
   const all = itemsFor(layer), cur = hotFor(layer).map(i => String(i.v));
-  $("invTitle").textContent = { terrain: "持ち物：地形", height: "持ち物：高さ", place: "持ち物：配置", props: "持ち物：飾り" }[layer];
+  $("invTitle").textContent = { terrain: "一覧：地形", height: "一覧：高さ", place: "一覧：配置（敵・味方・宝箱など）", props: "一覧：飾り" }[layer];
   $("invHelp").textContent = layer === "place" || layer === "props"
-    ? "押すと選んで閉じます。敵・マスの特徴・中身の決まった宝箱・飾りは、下の「＋」で足すと持ち物に入ります。"
+    ? "押すと選んで閉じます。敵・マスの特徴・中身の決まった宝箱・飾りは、下の「＋」で足すと一覧に入ります。"
     : "押すと選んで閉じます。長押し（右クリック）で下のバーに出す・外すを切り替えます（★がバーに出ているもの）。";
   const g = $("invGrid"); g.innerHTML = "";
   for (const it of all) {
@@ -993,7 +1082,7 @@ function editUnit(u) {
     ["ボス", "check", u.boss], ["動かない", "check", u.hold], ["待つ（自軍が攻撃の届く所に来るまで動かない）", "check", u.wait], ["味方のゲスト（自軍で戦う）", "check", u.ally],
     ["部隊（同じ名前の敵は一緒に動き出す。空なら部隊なし）", "list", u.squad || "", [...new Set(map.units.map(x => x.squad).filter(x => x))]],
     ["名前（画面に出す名前。空なら元の名前）", "text", u.name], ["職業（空なら元のまま）", "text", u.cls],
-    ["持ち物（「,」区切り。入れ替え）", "list", u.items, PAL.items], ["スキル（「,」区切り。足す）", "text", u.skills],
+    ["持ち物（武器・道具。「,」区切り。入れ替え）", "list", u.items, PAL.items], ["スキル（「,」区切り。足す）", "text", u.skills],
     ["落とすもの", "list", u.drop, PAL.items], ["お金（-1＝なし）", "number", u.gold],
   ], v => {
     const used = usedPlaceMarks(); used.delete(u.mark);
@@ -1318,14 +1407,334 @@ $("v3R").onclick = () => { v3.yaw += Math.PI / 2; draw3d(); };
 $("v3Top").onclick = () => { v3.yaw = 0; v3.pitch = 1.57; v3.zoom = 1; draw3d(); }; // リセット：真上から、奥（敵側）が上、まっすぐ
 addEventListener("resize", () => { if (v3el.style.display !== "none") size3d(); });
 
+// ================================================================ 道具（移動範囲・選ぶ/貼る・対称・部品・集計・バックアップ）
+// 一覧（PAL）に無いキーは、ページの初期値（DEFAULT_PALETTE）を使う。Unity からの書き出しは辞書を [{key, …}] の並びで書く
+const palGet = k => (PAL[k] !== undefined ? PAL[k] : DEFAULT_PALETTE[k]);
+const listMap = (l, f) => Object.fromEntries((l || []).map(x => [x.key, f ? f(x) : x.value]));
+const unitMoves = () => PAL.unitMoves || (PAL.unitMoveList ? listMap(PAL.unitMoveList) : DEFAULT_PALETTE.unitMoves);
+const itemRanges = () => PAL.itemRanges || (PAL.itemRangeList ? listMap(PAL.itemRangeList, x => [x.min, x.max]) : DEFAULT_PALETTE.itemRanges);
+const rangeDefaults = () => Object.assign({}, DEFAULT_PALETTE.rangeDefaults, PAL.rangeDefaults || {});
+const moveRules = () => Object.assign({ climb: 1, drop: 1 }, palGet("rules") || {});
+let mapVer = 0; // マップが変わるたびに増える（敵の範囲を計算し直す目印）
+
+// ---- 移動範囲：Unity の Pathfinder と同じ決まり（地形のコスト＋高さの上り下り、敵は通れない、味方は通れるが止まれない）
+// マスのユニット：出撃（P・1〜9）と味方のゲストは自軍、E と敵は敵軍。移動力・射程は一覧（unitMoves・itemRanges・rangeDefaults）から
+function unitSpec(c) {
+  const d = rangeDefaults();
+  if (c === "P" || (c >= "1" && c <= "9")) return { team: "P", move: d.move, min: d.min, max: d.max, name: c === "1" ? "主人公（出撃1）" : c === "P" ? "出撃" : `出撃${c}` };
+  if (c === "E") return { team: "E", move: d.move, min: d.min, max: d.max, name: "いつもの敵" };
+  const u = map.units.find(x => x.mark === c); if (!u) return null;
+  const ir = itemRanges(); let rg = null;
+  for (const it of splitList(u.items)) if (ir[it]) { rg = ir[it]; break; }
+  if (!rg) rg = (d.weapons || {})[weaponOf(u)] || [d.min, d.max];
+  const mv = unitMoves()[u.unit];
+  return { team: u.ally ? "P" : "E", move: u.hold ? 0 : (mv ?? d.move), min: rg[0], max: rg[1], name: (u.ally ? "味方 " : "") + (u.name || u.unit) + (u.hold ? "（動かない）" : "") };
+}
+function terrainCost(t) { if (t.cost != null) return t.cost; const d = DEFAULT_PALETTE.terrains.find(x => x.s === t.s); return d && d.cost != null ? d.cost : 1; }
+function stepCost(x0, y0, x1, y1) {
+  const t = terrainBy(map.terrain[y1][x1]); if (!t || t.passable === false) return Infinity;
+  const pr = map.props[y1][x1];
+  if (pr !== ".") { const pm = map.propMarks.find(p => p.mark === pr); if (pm && pm.blocks) return Infinity; }
+  const r = moveRules(), dh = r.useHeights === false ? 0 : map.height[y1][x1] - map.height[y0][x0]; // ゲームで高さを使わない設定なら、上り下りは数えない
+  return terrainCost(t) + (dh > 0 ? dh * r.climb : -dh * r.drop);
+}
+function teamGrid() { const W = map.w, g = new Array(W * map.h).fill(null); for (let y = 0; y < map.h; y++) for (let x = 0; x < W; x++) { const s = unitSpec(map.place[y][x]); if (s) g[y * W + x] = s.team; } return g; }
+// 一番安い道のり（teams があれば、ちがう軍のマスは通れない）
+function costMap(sx, sy, team, teams, budget) {
+  const W = map.w, H = map.h, dist = new Array(W * H).fill(Infinity); dist[sy * W + sx] = 0;
+  const q = [[sx, sy]];
+  while (q.length) {
+    const [x, y] = q.shift(), d0 = dist[y * W + x];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const i = ny * W + nx; if (teams && teams[i] && teams[i] !== team) continue;
+      const nd = d0 + stepCost(x, y, nx, ny); if (nd > budget || nd >= dist[i]) continue;
+      dist[i] = nd; q.push([nx, ny]);
+    }
+  }
+  return dist;
+}
+function rangeAt(x, y, teams) {
+  const spec = unitSpec(map.place[y][x]); if (!spec) return null;
+  const W = map.w, H = map.h, me = y * W + x; teams = teams || teamGrid();
+  const dist = costMap(x, y, spec.team, teams, spec.move);
+  const move = new Set();
+  for (let i = 0; i < dist.length; i++) if (dist[i] <= spec.move && (i === me || !teams[i])) move.add(i); // 味方の上には止まれない
+  const atk = new Set();
+  for (const i of move) { const cx = i % W, cy = (i / W) | 0;
+    for (let dy = -spec.max; dy <= spec.max; dy++) for (let dx = -spec.max; dx <= spec.max; dx++) {
+      const dd = Math.abs(dx) + Math.abs(dy); if (dd < spec.min || dd > spec.max) continue;
+      const ax = cx + dx, ay = cy + dy; if (ax < 0 || ay < 0 || ax >= W || ay >= H) continue;
+      const j = ay * W + ax; if (!move.has(j)) atk.add(j);
+    } }
+  return { spec, move, atk };
+}
+let rangeView = null, dangerOn = false, dangerCache = { ver: -1, cells: null };
+function rangeTap(x, y) {
+  const r = rangeAt(x, y);
+  if (!r) { rangeView = null; showInfo(x, y); draw(); return; }
+  rangeView = { x, y };
+  const s = r.spec; $("info").textContent = `${s.name}　移動${s.move}・射程${s.min === s.max ? s.min : s.min + "〜" + s.max}　（青＝動ける／赤＝攻撃が届く）`;
+  draw();
+}
+function dangerCells() {
+  if (dangerCache.ver === mapVer && dangerCache.cells) return dangerCache.cells;
+  const teams = teamGrid(), all = new Set();
+  for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) if (teams[y * map.w + x] === "E") { const r = rangeAt(x, y, teams); for (const i of r.move) all.add(i); for (const i of r.atk) all.add(i); }
+  dangerCache = { ver: mapVer, cells: all }; return all;
+}
+$("bDanger").onclick = () => { dangerOn = !dangerOn; $("bDanger").classList.toggle("on", dangerOn); toast(dangerOn ? "敵が動いて攻撃できるマスを赤くしました" : "敵の範囲を消しました"); draw(); };
+
+// ---- 対称：塗ると、左右・上下の反対側にも同じものを置く（出撃の番号 1〜9 は1つずつなので対称にしない）
+let mirror = 0; const MIRRORS = ["なし", "左右", "上下", "4方向"];
+function mirrorPts(x, y) {
+  const out = [[x, y]], mx = map.w - 1 - x, my = map.h - 1 - y;
+  if (mirror === 1 || mirror === 3) out.push([mx, y]);
+  if (mirror === 2 || mirror === 3) out.push([x, my]);
+  if (mirror === 3) out.push([mx, my]);
+  return out.filter((p, i) => out.findIndex(q => q[0] === p[0] && q[1] === p[1]) === i);
+}
+const isDigitSel = () => layer === "place" && typeof sel.place === "string" && sel.place >= "1" && sel.place <= "9";
+function setCell(x, y) { if (!mirror || isDigitSel()) return setCellOne(x, y); let ch = false; for (const [a, b] of mirrorPts(x, y)) if (setCellOne(a, b)) ch = true; return ch; }
+function fillFrom(x, y) { if (!mirror || isDigitSel()) return fillOne(x, y); for (const [a, b] of mirrorPts(x, y)) fillOne(a, b); }
+$("bMirror").onclick = () => { mirror = (mirror + 1) % MIRRORS.length; $("bMirror").textContent = `⇋ 対称：${MIRRORS[mirror]}`; $("bMirror").classList.toggle("on", mirror > 0); draw(); };
+
+// ---- 選ぶ・コピー・貼る（4つの層をまとめて）
+let selRect = null, selDrag = null, clip = null, pasteAt = null;
+const LAYERS = ["terrain", "height", "place", "props"];
+function cutOut(x0, y0, x1, y1) { const c = { w: x1 - x0 + 1, h: y1 - y0 + 1 }; for (const l of LAYERS) c[l] = gridOf(l).slice(y0, y1 + 1).map(r => r.slice(x0, x1 + 1)); return c; }
+function flipClip(c, horiz) { for (const l of LAYERS) c[l] = horiz ? c[l].map(r => r.slice().reverse()) : c[l].slice().reverse(); return c; }
+function rotClip(c) { const n = { w: c.h, h: c.w }; for (const l of LAYERS) n[l] = Array.from({ length: n.h }, (_, y) => Array.from({ length: n.w }, (_, x) => c[l][c.h - 1 - x][y])); return n; }
+// keepDigits：出撃の番号も置く（その場で反転するとき）。貼るときは番号が2つにならないよう置かない
+function putClip(c, x0, y0, keepDigits) {
+  let ch = false;
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+    const mx = x0 + x, my = y0 + y; if (mx < 0 || my < 0 || mx >= map.w || my >= map.h) continue;
+    for (const l of LAYERS) {
+      const v = c[l][y][x];
+      if (l === "place" && !keepDigits && (v >= "1" && v <= "9" || (map.place[my][mx] >= "1" && map.place[my][mx] <= "9"))) continue;
+      if (gridOf(l)[my][mx] !== v) { gridOf(l)[my][mx] = v; ch = true; }
+    }
+  }
+  return ch;
+}
+const pasteOrigin = () => [pasteAt[0] - Math.floor((clip.w - 1) / 2), pasteAt[1] - Math.floor((clip.h - 1) / 2)]; // タップしたマスが真ん中
+function editSel(f) { pushUndo(); const ch = f(); if (ch === false) undoStack.pop(); else saveSoon(); updateBar(); draw(); }
+function barButtons(hint, list) {
+  const B = $("bar"); B.innerHTML = ""; B.style.display = "flex";
+  if (hint) { const d = document.createElement("div"); d.className = "hint"; d.textContent = hint; B.appendChild(d); }
+  for (const [label, f, on] of list) { const b = document.createElement("button"); b.textContent = label; if (on) b.className = "on"; b.onclick = f; B.appendChild(b); }
+}
+function updateBar() {
+  const B = $("bar");
+  if (tool === "select") {
+    if (!selRect) { barButtons("指でなぞって範囲を選ぶ（2本指で動かす）", clip ? [["📋 貼る", () => setTool("paste")]] : []); return; }
+    const [x0, y0, x1, y1] = selRect;
+    barButtons(`横${x0 + 1}〜${x1 + 1}・縦${y0 + 1}〜${y1 + 1}（${x1 - x0 + 1}×${y1 - y0 + 1}）`, [
+      ["コピー", () => { clip = cutOut(x0, y0, x1, y1); toast("コピーしました。「貼る」で置けます"); updateBar(); }],
+      ["切り取り", () => { clip = cutOut(x0, y0, x1, y1); editSel(() => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { map.terrain[y][x] = "."; map.height[y][x] = 0; map.place[y][x] = "."; map.props[y][x] = "."; } }); }],
+      ["⇆ 左右反転", () => editSel(() => putClip(flipClip(cutOut(x0, y0, x1, y1), true), x0, y0, true))],
+      ["⇅ 上下反転", () => editSel(() => putClip(flipClip(cutOut(x0, y0, x1, y1), false), x0, y0, true))],
+      ...(clip ? [["📋 貼る", () => setTool("paste")]] : []),
+      ["解除", () => { selRect = null; updateBar(); draw(); }],
+    ]);
+    return;
+  }
+  if (tool === "paste" && clip) {
+    barButtons(pasteAt ? "よければ「ここに置く」。別の所をタップすると動かせます" : `置きたい所をタップ（${clip.w}×${clip.h}）`, [
+      ...(pasteAt ? [["✔ ここに置く", () => editSel(() => putClip(clip, ...pasteOrigin(), false)), true]] : []),
+      ["⟳ 回す", () => { clip = rotClip(clip); updateBar(); draw(); }],
+      ["⇆", () => { flipClip(clip, true); draw(); }], ["⇅", () => { flipClip(clip, false); draw(); }],
+      ["やめる", () => setTool("pen")],
+    ]);
+    return;
+  }
+  B.style.display = "none";
+}
+function toolChanged() {
+  if (tool !== "paste") pasteAt = null;
+  if (tool !== "select") { selRect = null; selDrag = null; }
+  if (tool !== "range") rangeView = null;
+  if (tool === "paste" && !clip) { tool = "select"; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === "select")); }
+  if (tool === "range") $("info").textContent = "敵・出撃のマスをタップすると、動ける所（青）と攻撃が届く所（赤）が出ます";
+  updateBar(); if (map) draw();
+}
+
+// ---- マップの上に重ねて描く（範囲・対称の線・選んだ範囲・貼る前の影）
+function drawOverlays() {
+  const s = view.s, W = map.w;
+  const tint = (set, col) => { ctx.fillStyle = col; for (const i of set) ctx.fillRect(view.ox + (i % W) * s, view.oy + ((i / W) | 0) * s, s, s); };
+  if (dangerOn) tint(dangerCells(), "rgba(255,40,40,.30)");
+  if (rangeView) {
+    const r = rangeAt(rangeView.x, rangeView.y);
+    if (!r) rangeView = null;
+    else { tint(r.atk, "rgba(255,70,70,.45)"); tint(r.move, "rgba(60,140,255,.50)"); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.strokeRect(view.ox + rangeView.x * s + 1.5, view.oy + rangeView.y * s + 1.5, s - 3, s - 3); }
+  }
+  if (mirror) {
+    ctx.save(); ctx.setLineDash([6, 5]); ctx.strokeStyle = "#7fe0ff"; ctx.lineWidth = 2; ctx.beginPath();
+    if (mirror === 1 || mirror === 3) { ctx.moveTo(view.ox + W * s / 2, view.oy); ctx.lineTo(view.ox + W * s / 2, view.oy + map.h * s); }
+    if (mirror === 2 || mirror === 3) { ctx.moveTo(view.ox, view.oy + map.h * s / 2); ctx.lineTo(view.ox + W * s, view.oy + map.h * s / 2); }
+    ctx.stroke(); ctx.restore();
+  }
+  const box = (x0, y0, x1, y1, col) => { ctx.save(); ctx.setLineDash([7, 4]); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.strokeRect(view.ox + x0 * s, view.oy + y0 * s, (x1 - x0 + 1) * s, (y1 - y0 + 1) * s); ctx.restore(); };
+  if (selDrag) box(Math.min(selDrag[0], selDrag[2]), Math.min(selDrag[1], selDrag[3]), Math.max(selDrag[0], selDrag[2]), Math.max(selDrag[1], selDrag[3]), "#7fe0ff");
+  if (selRect) box(...selRect, "#7fe0ff");
+  if (tool === "paste" && clip && pasteAt) {
+    const [ox, oy] = pasteOrigin();
+    ctx.globalAlpha = 0.85;
+    for (let y = 0; y < clip.h; y++) for (let x = 0; x < clip.w; x++) {
+      const mx = ox + x, my = oy + y; if (mx < 0 || my < 0 || mx >= W || my >= map.h) continue;
+      const t = terrainBy(clip.terrain[y][x]), px = view.ox + mx * s, py = view.oy + my * s;
+      ctx.fillStyle = t ? shade(t.color, Math.min(0.45, clip.height[y][x] * 0.09)) : "#f0f"; ctx.fillRect(px, py, s, s);
+      const pc = clip.place[y][x];
+      if (pc !== ".") { const st = placeStyle(pc); ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, s * 0.32, 0, Math.PI * 2); ctx.fillStyle = st.bg; ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = `bold ${Math.floor(s * 0.36)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(st.label, px + s / 2, py + s / 2 + 1); }
+    }
+    ctx.globalAlpha = 1; box(ox, oy, ox + clip.w - 1, oy + clip.h - 1, "#f0b44c");
+  }
+}
+
+// ---- 部品：ゲームのマップ部品（一覧の blocks）を、はんこのように置く。P・E・C は配置の印に、? は平地にする
+const ROLE_NAMES = { PlayerStart: "出撃地", EnemyBase: "敵の陣", Road: "道", Normal: "ふつう", Plaza: "広場", Obstacle: "じゃまな所" };
+let blkTheme = "";
+function blockClip(b) {
+  const h = b.terrain.length, w = Math.max(...b.terrain.map(r => [...r].length)), c = { w, h, terrain: [], height: [], place: [], props: [] };
+  for (let y = 0; y < h; y++) {
+    const row = [...b.terrain[y]], hr = [...((b.heights || [])[y] || "")];
+    c.terrain.push([]); c.height.push([]); c.place.push([]); c.props.push([]);
+    for (let x = 0; x < w; x++) {
+      const ch = row[x] || ".", mark = ch === "P" || ch === "E" || ch === "C";
+      c.terrain[y].push(mark || ch === "?" || !terrainBy(ch) ? "." : ch);
+      c.place[y].push(mark ? ch : "."); c.props[y].push(".");
+      c.height[y].push(toInt(hr[x], 0));
+    }
+  }
+  return c;
+}
+function blockPreview(c, px) {
+  const k = document.createElement("canvas"), d = devicePixelRatio || 1; k.width = c.w * px * d; k.height = c.h * px * d; k.style.width = c.w * px + "px"; k.style.height = c.h * px + "px";
+  const g = k.getContext("2d"); g.scale(d, d);
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+    const t = terrainBy(c.terrain[y][x]); g.fillStyle = t ? shade(t.color, Math.min(0.45, c.height[y][x] * 0.12)) : "#f0f"; g.fillRect(x * px, y * px, px, px);
+    const pc = c.place[y][x];
+    if (pc !== ".") { g.beginPath(); g.arc(x * px + px / 2, y * px + px / 2, px * 0.34, 0, Math.PI * 2); g.fillStyle = pc === "P" ? "#3d7bff" : pc === "E" ? "#ff8a3d" : "#d9a520"; g.fill(); g.fillStyle = "#fff"; g.font = `bold ${px * 0.42}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(pc === "C" ? "箱" : pc, x * px + px / 2, y * px + px / 2 + 1); }
+    if (c.height[y][x] > 0) { g.fillStyle = "#fff"; g.font = `bold ${px * 0.3}px sans-serif`; g.textAlign = "left"; g.textBaseline = "bottom"; g.fillText(c.height[y][x], x * px + 1, y * px + px); }
+  }
+  g.strokeStyle = "rgba(0,0,0,.3)"; for (let i = 0; i <= c.w; i++) { g.beginPath(); g.moveTo(i * px + .5, 0); g.lineTo(i * px + .5, c.h * px); g.stroke(); } for (let i = 0; i <= c.h; i++) { g.beginPath(); g.moveTo(0, i * px + .5); g.lineTo(c.w * px, i * px + .5); g.stroke(); }
+  return k;
+}
+function openBlocks() {
+  const blocks = palGet("blocks") || [];
+  const themes = [...new Set(blocks.flatMap(b => b.themes || []).filter(x => x))];
+  if (blkTheme && !themes.includes(blkTheme)) blkTheme = "";
+  const T = $("blkThemes"); T.innerHTML = "";
+  for (const th of ["", ...themes]) { const b = document.createElement("button"); b.textContent = th || "全部"; b.className = th === blkTheme ? "on" : ""; b.onclick = () => { blkTheme = th; openBlocks(); }; T.appendChild(b); }
+  const L = $("blkList"); L.innerHTML = "";
+  const shown = blocks.filter(b => !blkTheme || !(b.themes || []).filter(x => x).length || b.themes.includes(blkTheme)); // テーマなしの部品はどのテーマでも出る
+  if (!shown.length) L.innerHTML = `<div class="muted" style="margin:10px 0">部品がありません（Unity から一覧を書き出し直すと入ります）。</div>`;
+  for (const role of Object.keys(ROLE_NAMES).concat([...new Set(shown.map(b => b.role))].filter(r => !ROLE_NAMES[r]))) {
+    const list = shown.filter(b => b.role === role); if (!list.length) continue;
+    const h = document.createElement("h3"); h.textContent = ROLE_NAMES[role] || role; L.appendChild(h);
+    for (const b of list) {
+      const c = blockClip(b), btn = document.createElement("button"); btn.className = "blk card";
+      btn.appendChild(blockPreview(c, 14));
+      const t = document.createElement("div"); t.innerHTML = `<div>${esc(b.name)}</div><div class="muted">${(b.themes || []).filter(x => x).map(esc).join("・") || "どのテーマでも"}</div>`; btn.appendChild(t);
+      btn.onclick = () => { clip = c; closeSheets(); setTool("paste"); toast(`「${b.name}」：置きたい所をタップ`); };
+      L.appendChild(btn);
+    }
+  }
+  openSheet("sBlocks");
+}
+$("bBlocks").onclick = () => { if (map && map.theme && !blkTheme) blkTheme = map.theme; openBlocks(); };
+
+// ---- 集計：数と、主人公から敵・ボス・目標までの道のり（味方の移動力でおよそ何ターンか）
+function mapStats() {
+  const W = map.w, H = map.h, count = {}, cells = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const c = map.place[y][x]; if (c === ".") continue; count[c] = (count[c] || 0) + 1; cells.push([x, y, c]); }
+  const terr = {}; for (const r of map.terrain) for (const t of r) terr[t] = (terr[t] || 0) + 1;
+  const enemies = {}, weapons = {}, bosses = [], allies = [];
+  for (const u of map.units) {
+    const n = count[u.mark] || 0; if (!n) continue;
+    if (u.ally) { allies.push(`${u.name || u.unit}${n > 1 ? "×" + n : ""}`); continue; }
+    const nm = u.name || u.unit; enemies[nm] = (enemies[nm] || 0) + n;
+    const w = weaponOf(u) || "（不明）"; weapons[w] = (weapons[w] || 0) + n;
+    if (u.boss) bosses.push(nm);
+  }
+  const ex = extraMarks(map);
+  const hero = cells.find(c => c[2] === "1") || cells.find(c => c[2] === "P");
+  const starts = (count.P || 0) + Object.keys(count).filter(c => c >= "1" && c <= "9").length;
+  const enemyTotal = Object.values(enemies).reduce((a, b) => a + b, 0) + (count.E || 0);
+  const out = [];
+  const row = (k, v) => out.push([k, v]);
+  const fmt = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join("、") || "なし";
+  row("大きさ", `横${W}・縦${H}（${W * H}マス）`);
+  row("地形", Object.entries(terr).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${(terrainBy(t) || { name: t }).name} ${Math.round(n * 100 / (W * H))}%`).join("、"));
+  row("クリア条件", (map.objective || "いつもの決まり") + (map.turns ? `（${map.turns}ターン）` : ""));
+  row("出撃できる人数", `${starts}人${count["1"] ? "" : "（主人公の 1 がありません）"}`);
+  row("敵", `${enemyTotal}体（いつもの敵 E ×${count.E || 0}）`);
+  row("敵の内わけ", fmt(enemies));
+  row("敵の武器", fmt(weapons));
+  row("ボス", bosses.join("、") || "なし");
+  row("味方のゲスト", allies.join("、") || "なし");
+  const chestN = (count.C || 0) + map.chests.reduce((a, c) => a + (count[c.mark] || 0), 0);
+  row("宝箱", `${chestN}個`);
+  row("マスの特徴", map.features.map(f => `${f.feature}×${count[f.mark] || 0}`).join("、") || "なし");
+  row("増援", ex.filter(x => x.kind === "増援").map(x => x.name.replace(/^増援 /, "")).join("、") || "なし");
+  row("装置", ex.filter(x => x.kind === "装置").map(x => x.name.replace(/^装置 /, "")).join("、") || "なし");
+  if (hero) {
+    const d = rangeDefaults(), dist = costMap(hero[0], hero[1], "P", null, Infinity);
+    const far = (list, label) => {
+      let best = Infinity; for (const [x, y] of list) best = Math.min(best, dist[y * W + x]);
+      if (!list.length) return; row(label, best === Infinity ? "たどり着けません" : `移動コスト ${best}（移動${d.move}で約${Math.max(1, Math.ceil(best / d.move))}ターン）`);
+    };
+    const isEnemy = c => c === "E" || map.units.some(u => u.mark === c && !u.ally);
+    far(cells.filter(c => isEnemy(c[2])), "主人公から一番近い敵");
+    far(cells.filter(c => map.units.some(u => u.mark === c[2] && u.boss && !u.ally)), "主人公からボス");
+    far(cells.filter(c => c[2] === "*"), "主人公から目標のマス");
+  }
+  return out;
+}
+$("bStats").onclick = () => { if (!map) return; $("statsBody").innerHTML = mapStats().map(([k, v]) => `<div class="stat"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("") + `<div class="muted" style="margin-top:8px">道のりは地形${moveRules().useHeights === false ? "" : "と高さ"}のコストで数えます（敵がふさいでいる所も通れるものとして）。ターンは味方のいつもの移動力（${rangeDefaults().move}）で割った目安です。</div>`; openSheet("sStats"); };
+
+// ---- バックアップ：全部のマップを1つの .json に。戻すときは、同じマップなら新しいほうを残す
+function backupName() { const d = new Date(), p = n => String(n).padStart(2, "0"); return `マップ案バックアップ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.json`; }
+$("bBackup").onclick = async () => {
+  saveNow();
+  const json = JSON.stringify({ app: "srpg-mapmaker", version: 1, saved: new Date().toISOString(), maps }, null, 1), name = backupName();
+  try {
+    const file = new File([json], name, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  if (cloud.downloads) { try { await cloud.downloads.save({ filename: name, data: new Blob([json], { type: "application/json" }) }); return; } catch (e) {} }
+  try {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([json], { type: "application/json" })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast(`${Object.keys(maps).length}個のマップを保存しました`);
+  } catch (e) { try { await navigator.clipboard.writeText(json); toast("保存できないのでコピーしました（メモなどに貼ってください）"); } catch (x) { toast("保存できませんでした"); } }
+};
+$("bRestore").onclick = () => $("fBak").click();
+$("fBak").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const b = JSON.parse(await f.text()); if (!b || b.app !== "srpg-mapmaker" || !b.maps) throw 0;
+    saveNow(); let added = 0, newer = 0;
+    for (const [id, r] of Object.entries(b.maps)) {
+      if (!r || typeof r.text !== "string") continue;
+      const mine = maps[id];
+      if (!mine) added++; else if ((r.updated || 0) > mine.updated) newer++; else continue;
+      maps[id] = { text: r.text, updated: r.updated || Date.now() }; cloudPut(id);
+    }
+    saveAll(); if (maps[curId]) openMap(curId); refreshMapList();
+    toast(`戻しました（増えた ${added}・新しくなった ${newer}）`);
+  } catch (x) { toast("このページのバックアップとして読めませんでした"); }
+};
+
 // ================================================================ 画面の更新
-function setTool(t) { tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); }
+function setTool(t) { tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); toolChanged(); }
 document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
 document.querySelectorAll("[data-layer]").forEach(b => b.onclick = () => { layer = b.dataset.layer; document.querySelectorAll("[data-layer]").forEach(x => x.classList.toggle("on", x === b)); refreshHotbar(); draw(); });
 $("bUndo").onclick = undo; $("bRedo").onclick = redo; $("bFit").onclick = fitView;
 function refreshTitle() { $("title").innerHTML = map ? `${esc(map.name)}<small>${map.w}×${map.h}</small><small id="cloudState">${esc(cloud.state)}</small>` : "-"; }
 function setCloudState(t) { cloud.state = t; const el = $("cloudState"); if (el) el.textContent = t; }
-function refreshAll() { refreshTitle(); refreshHotbar(); draw(); }
+function refreshAll() { mapVer++; refreshTitle(); refreshHotbar(); draw(); }
 // 画面の大きさ・向きが変わったら描き直す（向きが変わったときはマップ全体が入るように合わせ直す）
 let lastLandscape = innerWidth > innerHeight;
 const stageObserver = new ResizeObserver(() => { resizeCanvas(); const l = innerWidth > innerHeight; if (l !== lastLandscape) { lastLandscape = l; fitView(); } });
