@@ -293,6 +293,25 @@ function weaponOf(u) {
   for (const it of splitList(u.items)) if (iw[it]) return iw[it];
   return uw[u.unit] || "";
 }
+// [増援]・[装置]：中身はテキストのまま取っておき（ゲームの StoryMapText が読む）、ここでは配置の文字だけ読む。
+// 増援 r: 山賊 数=2 ターン=3 …（r が出口のマス）、装置 k: 名前=… 地形=~>H 場所=m …（k が装置、m が地形の変わるマス）
+const EXTRA_SECTIONS = ["増援", "装置"];
+function extraSection(m, title) { let sec = m.sections.find(x => x.title === title); return sec; }
+function extraMarks(m) {
+  const out = [];
+  for (const title of EXTRA_SECTIONS) {
+    const sec = extraSection(m, title); if (!sec) continue;
+    for (const raw of sec.lines) {
+      const line = raw.trim(); if (!line || line.startsWith("#") || line.startsWith("//") || line.startsWith("＃")) continue;
+      const i = line.search(/[:：]/); if (i <= 0) continue;
+      const mark = line.slice(0, i).trim(), rest = line.slice(i + 1).trim(); if ([...mark].length !== 1) continue;
+      const kv = Object.fromEntries(rest.split(/[ 　\t]+/).map(t => t.split("=")).filter(a => a.length === 2));
+      if (title === "増援") out.push({ mark, kind: "増援", name: `増援 ${rest.split(/[ 　\t]+/)[0] || ""}${kv["数"] ? "×" + kv["数"] : ""}` });
+      else { out.push({ mark, kind: "装置", name: `装置 ${kv["名前"] || ""}` }); if (kv["場所"]) for (const pm of [...kv["場所"]]) out.push({ mark: pm, kind: "場所", name: `装置で変わるマス（${kv["名前"] || mark}）` }); }
+    }
+  }
+  return out;
+}
 const weaponGlyph = w => { const d = (PAL.weapons || []).find(x => x.name === w); return d ? d.glyph : (w ? [...w][0] : ""); };
 
 // 配置で決まった意味のある文字（StoryMap.IsBuiltInMark と同じ）
@@ -486,7 +505,7 @@ function writeMap(m) {
 function checkMap(m) {
   const errs = [], warns = [];
   const starts = [], seenNum = new Set();
-  const legendMarks = new Set([...m.units.map(u => u.mark), ...m.features.map(f => f.mark), ...m.chests.map(c => c.mark)]);
+  const legendMarks = new Set([...m.units.map(u => u.mark), ...m.features.map(f => f.mark), ...m.chests.map(c => c.mark), ...extraMarks(m).map(x => x.mark)]);
   const propMarks = new Set(m.propMarks.map(p => p.mark));
   const pass = (x, y) => { const t = terrainBy(m.terrain[y][x]); const pm = m.propMarks.find(p => p.mark === m.props[y][x]); return (!t || t.passable) && !(pm && pm.blocks); };
   const unknownT = new Set(), unknownP = new Set(), unknownPr = new Set();
@@ -592,6 +611,8 @@ function placeStyle(c) {
   if (u) { const w = weaponOf(u); return { bg: u.ally ? "#2fae5a" : (u.boss ? "#a01818" : "#e04848"), label: w ? weaponGlyph(w) : c, mark: w ? c : "", boss: u.boss }; }
   if (map.chests.find(x => x.mark === c)) return { bg: "#d9a520", label: c };
   if (map.features.find(x => x.mark === c)) return { bg: "#9b5de5", label: c, ring: true };
+  const ex = extraMarks(map).find(x => x.mark === c);
+  if (ex) return ex.kind === "増援" ? { bg: "#b5452a", label: "増", mark: c } : ex.kind === "装置" ? { bg: "#178f8f", label: "装", mark: c } : { bg: "#2fc4c4", label: c, ring: true };
   return { bg: "#777", label: c };
 }
 function draw() {
@@ -719,6 +740,7 @@ function placeName(c) {
   const u = map.units.find(x => x.mark === c); if (u) { const w = weaponOf(u); n.push((u.ally ? "味方 " : "") + (u.name || u.unit) + (w ? `・${w}` : "") + (u.boss ? "（ボス）" : "")); }
   const f = map.features.find(x => x.mark === c); if (f) n.push(f.feature);
   const ch = map.chests.find(x => x.mark === c); if (ch) n.push("宝箱 " + [ch.item, ch.gold ? ch.gold + "G" : ""].filter(x => x).join(" "));
+  for (const ex of extraMarks(map)) if (ex.mark === c) n.push(ex.name);
   return n.length ? n.join("＋") : c;
 }
 function showInfo(x, y) {
@@ -823,7 +845,7 @@ function itemsFor(l) {
     const list = [{ v: ".", name: "消す", color: "#333", label: "×" }, { v: "P", name: "出撃", color: "#3d7bff", label: "P" }];
     for (let i = 1; i <= 9; i++) list.push({ v: String(i), name: i === 1 ? "出撃1（主人公）" : `出撃${i}`, color: "#3d7bff", label: String(i) });
     list.push({ v: "E", name: "いつもの敵", color: "#ff8a3d", label: "E" }, { v: "C", name: "宝箱（ランダム）", color: "#d9a520", label: "箱" }, { v: "*", name: "目標のマス", color: "#ff4fa8", label: "★" });
-    const marks = [...new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark)])];
+    const marks = [...new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark), ...extraMarks(map).map(x => x.mark)])];
     for (const m of marks) { const st = placeStyle(m); list.push({ v: m, name: (st.mark ? m + " " : "") + placeName(m), color: st.bg, label: st.label, legend: true }); }
     return list;
   }
@@ -881,18 +903,37 @@ function togglePin(v) {
 
 // ---- 凡例（敵・マスの特徴・宝箱・飾り）
 function nextMark(used) { for (const c of MARK_CHARS) if (!used.has(c)) return c; return "?"; }
-function usedPlaceMarks() { return new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark)]); }
+function usedPlaceMarks() { return new Set([...map.units.map(u => u.mark), ...map.features.map(f => f.mark), ...map.chests.map(c => c.mark), ...extraMarks(map).map(x => x.mark)]); }
 function renderLegend() {
   const L = $("legend"); L.innerHTML = "";
   if (layer === "place") {
     L.innerHTML = `<h3>このマップの敵・味方のゲスト</h3><div id="lgU"></div><button id="addU" style="width:100%">＋敵・味方を足す</button>
       <h3>マスの特徴</h3><div id="lgF"></div><button id="addF" style="width:100%">＋マスの特徴を足す</button>
-      <h3>中身の決まった宝箱</h3><div id="lgC"></div><button id="addC" style="width:100%">＋宝箱を足す</button>`;
+      <h3>中身の決まった宝箱</h3><div id="lgC"></div><button id="addC" style="width:100%">＋宝箱を足す</button>
+      <h3>増援・装置（テキストで書く）</h3>
+      <div class="muted">増援：「r: 山賊 数=2 ターン=3 毎=2 回数=3 近づく=4 倒されたら=b 止める=c ふさげない」（r が出口のマス。後ろは敵と同じ書き方）<br>
+      装置：「k: 名前=跳ね橋のレバー 地形=~>H 場所=m 止める=r 動かす=砦 消す=魔法陣」（k が装置、m が地形の変わるマス）</div>
+      <label>[増援]</label><textarea id="exR" rows="3"></textarea>
+      <label>[装置]</label><textarea id="exD" rows="3"></textarea>
+      <div class="row" style="margin-top:6px"><button id="addR" class="small">＋増援のひな形</button><button id="addD" class="small">＋装置のひな形</button></div>`;
     for (const u of map.units) $("lgU").appendChild(legendCard(u.mark, unitLine(u).slice(3), () => editUnit(u)));
     for (const f of map.features) $("lgF").appendChild(legendCard(f.mark, f.feature, () => editFeature(f)));
     for (const c of map.chests) $("lgC").appendChild(legendCard(c.mark, chestLine(c).slice(2), () => editChest(c)));
     $("addU").onclick = () => { pushUndo(); const u = { mark: nextMark(usedPlaceMarks()), unit: PAL.units[0] || "山賊", level: 0, boss: false, hold: false, wait: false, ally: false, name: "", cls: "", items: "", skills: "", drop: "", gold: -1, squad: "", extra: [] }; map.units.push(u); sel.place = u.mark; editUnit(u); };
     $("addF").onclick = () => { pushUndo(); const f = { mark: nextMark(usedPlaceMarks()), feature: PAL.features[0] || "魔法陣" }; map.features.push(f); sel.place = f.mark; editFeature(f); };
+    const exLines = t => { const sec = extraSection(map, t); return sec ? sec.lines.join("\n") : ""; };
+    const setEx = (t, text) => {
+      const lines = text.split("\n").map(l => l.replace(/\s+$/, "")).filter(l => l.trim());
+      let sec = extraSection(map, t);
+      if (!lines.length) { map.sections = map.sections.filter(x => x !== sec); }
+      else if (sec) sec.lines = lines; else map.sections.push({ title: t, lines });
+      saveSoon(); refreshHotbar(); draw();
+    };
+    $("exR").value = exLines("増援"); $("exD").value = exLines("装置");
+    $("exR").onchange = () => { pushUndo(); setEx("増援", $("exR").value); };
+    $("exD").onchange = () => { pushUndo(); setEx("装置", $("exD").value); };
+    $("addR").onclick = () => { pushUndo(); const r = nextMark(usedPlaceMarks()); $("exR").value = ($("exR").value.trim() + `\n${r}: ${PAL.units[0] || "山賊"} 数=1 ターン=3`).trim(); setEx("増援", $("exR").value); sel.place = r; toast(`増援「${r}」を足しました。出口のマスに置いてください`); };
+    $("addD").onclick = () => { pushUndo(); const used = usedPlaceMarks(); const k = nextMark(used); used.add(k); const mm = nextMark(used); $("exD").value = ($("exD").value.trim() + `\n${k}: 名前=レバー 地形=~>H 場所=${mm}`).trim(); setEx("装置", $("exD").value); sel.place = k; toast(`装置「${k}」と、変わるマス「${mm}」を足しました`); };
     $("addC").onclick = () => { pushUndo(); const c = { mark: nextMark(usedPlaceMarks()), item: PAL.items[0] || "", gold: 0 }; map.chests.push(c); sel.place = c.mark; editChest(c); };
   } else if (layer === "props") {
     L.innerHTML = `<h3>このマップの飾り</h3><div id="lgP"></div><button id="addP" style="width:100%">＋飾りを足す</button>`;
