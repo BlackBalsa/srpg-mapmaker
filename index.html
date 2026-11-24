@@ -106,6 +106,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <button data-tool="pick">💧 スポイト</button>
   <button data-tool="move">✋ 動かす</button>
   <button id="bFit">⤢ 全体</button>
+  <button id="b3d">🧊 3Dで見る</button>
   <button id="bSettings">⚙ マップ設定</button>
 </div>
 <div id="layers">
@@ -216,6 +217,16 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <label>中身（<span id="outFile"></span>）</label>
   <textarea id="outText" rows="14" readonly></textarea>
 </div></div>
+
+<!-- 3Dで見る（見るだけ。指で回す・2本指で拡大） -->
+<div id="v3" style="position:fixed;inset:0;z-index:15;background:#15181d;display:none;touch-action:none">
+  <canvas id="cv3" style="position:absolute;inset:0"></canvas>
+  <div style="position:absolute;left:0;right:0;top:0;display:flex;gap:6px;padding:8px;padding-top:max(8px,env(safe-area-inset-top));align-items:center">
+    <button id="v3Close">← 戻る</button><div style="flex:1;font-weight:bold" id="v3Title"></div>
+    <button id="v3L">⟲</button><button id="v3R">⟳</button><button id="v3Top">真上</button>
+  </div>
+  <div class="muted" style="position:absolute;left:10px;bottom:calc(8px + env(safe-area-inset-bottom))">1本指で回す・上下で傾き　2本指で拡大</div>
+</div>
 
 <div id="toast"></div>
 
@@ -1158,6 +1169,83 @@ function cloudPutPalette(p) { if (cloud.db && cloud.ready) cloud.db.doc("config/
     }, () => { clearTimeout(timer); setCloudState("この端末だけに保存"); cloud.db = null; });
   } catch (e) { setCloudState(""); }
 })();
+
+// ================================================================ 3Dで見る
+// 外の部品を使わない簡単な3D（真横から見た箱を奥から順に描く）。Unity と同じく、高さ1段＝0.5マス分。
+// 地形の箱・高さ・出撃位置/敵（立て札）・飾り（小さな箱）を出す。見るだけで、ここでは塗らない
+const v3 = { yaw: Math.PI / 4, pitch: 0.75, zoom: 1, pts: new Map(), g: null };
+const STEP = 0.5;                       // 高さ1段の高さ（マス＝1）
+const BASE = { "~": 0.05, "H": 0.18, "B": 0.18 }; // 地形ごとの土台の高さ（水は低く）
+function open3d() { $("v3").style.display = "block"; $("v3Title").textContent = `${map.name}（${map.w}×${map.h}）`; v3.zoom = 1; size3d(); }
+function size3d() { const c = $("cv3"), d = devicePixelRatio || 1; c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; draw3d(); }
+function draw3d() {
+  if ($("v3").style.display === "none") return;
+  const c = $("cv3"), g = c.getContext("2d"), d = devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  g.setTransform(d, 0, 0, d, 0, 0); g.fillStyle = "#15181d"; g.fillRect(0, 0, W, H);
+  const cy = Math.cos(v3.yaw), sy = Math.sin(v3.yaw), sp = Math.sin(v3.pitch), cp = Math.cos(v3.pitch);
+  const span = Math.hypot(map.w, map.h);
+  const S = Math.min(W, H) / (span * 0.95) * v3.zoom;
+  const ox = W / 2, oy = H / 2 + 20;
+  // 世界（x：横, z：奥行き（行）, y：高さ）→ 画面
+  const P = (x, z, y) => { const dx = x - map.w / 2, dz = z - map.h / 2; const rx = cy * dx - sy * dz, rz = sy * dx + cy * dz; return [ox + rx * S, oy + rz * S * sp - y * S * cp]; };
+  const depth = (x, z) => { const dx = x - map.w / 2, dz = z - map.h / 2; return sy * dx + cy * dz; };
+  const poly = (pts, fill, stroke) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fillStyle = fill; g.fill(); if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); } };
+  // 箱（x0..x1, z0..z1, 高さ y0..y1）。カメラを向いた横の面と上の面だけ描く
+  const box = (x0, z0, x1, z1, y0, y1, color, line) => {
+    const sides = [[[x0, z0], [x0, z1], -1, 0], [[x1, z1], [x1, z0], 1, 0], [[x1, z0], [x0, z0], 0, -1], [[x0, z1], [x1, z1], 0, 1]];
+    for (const [a, b, nx, nz] of sides) {
+      const facing = sy * nx + cy * nz; if (facing <= 0.001) continue;
+      poly([P(a[0], a[1], y0), P(b[0], b[1], y0), P(b[0], b[1], y1), P(a[0], a[1], y1)], shade(color, -0.25 - 0.2 * (1 - facing)), line);
+    }
+    poly([P(x0, z0, y1), P(x1, z0, y1), P(x1, z1, y1), P(x0, z1, y1)], color, line);
+  };
+  const cells = [];
+  for (let z = 0; z < map.h; z++) for (let x = 0; x < map.w; x++) cells.push([x, z, depth(x + .5, z + .5)]);
+  cells.sort((a, b) => a[2] - b[2]);
+  const fs = Math.max(9, S * 0.42);
+  // 方角の目印（奥＝敵側）。マップより先に描いて、立て札の下にする
+  { const [ax, ay] = P(map.w / 2, -1.2, 0); g.fillStyle = "#f0b44c"; g.font = `bold ${Math.max(12, fs * .7)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("奥（敵側）", ax, ay); }
+  for (const [x, z] of cells) {
+    const t = terrainBy(map.terrain[z][x]), col = t ? t.color : "#ff00ff", sym = map.terrain[z][x];
+    const top = (BASE[sym] ?? 0.25) + map.height[z][x] * STEP;
+    if (sym === "H" || sym === "B") { box(x, z, x + 1, z + 1, 0, 0.05, "#4080d9", "rgba(0,0,0,.25)"); box(x + .08, z + .08, x + .92, z + .92, 0.1, top, col, "rgba(0,0,0,.25)"); }
+    else box(x, z, x + 1, z + 1, 0, top, col, "rgba(0,0,0,.22)");
+    if (sym === "T" || sym === "W") { // 森：小さな木
+      const n = sym === "W" ? 2 : 1;
+      for (let i = 0; i < n; i++) { const fx = x + 0.3 + i * 0.4, fz = z + 0.3 + i * 0.35; box(fx - .06, fz - .06, fx + .06, fz + .06, top, top + .2, "#6b4a2b"); box(fx - .2, fz - .2, fx + .2, fz + .2, top + .2, top + .55, shade(col, -0.1)); }
+    }
+    if (sym === "#") box(x, z, x + 1, z + 1, top, top + 0.6, col, "rgba(0,0,0,.3)");
+    const pr = map.props[z][x];
+    if (pr !== ".") { const pm = map.propMarks.find(p => p.mark === pr); const blocks = pm && pm.blocks; box(x + .2, z + .2, x + .8, z + .8, top, top + (blocks ? .55 : .3), blocks ? "#c9b48a" : "#9a8f7a", "rgba(0,0,0,.35)"); if (blocks) box(x + .15, z + .15, x + .85, z + .85, top + .55, top + .62, "#8a3b2b"); }
+    const pc = map.place[z][x];
+    if (pc !== ".") { // 立て札：棒の先に丸と字
+      const st = placeStyle(pc), [bx, by] = P(x + .5, z + .5, top), [hx, hy] = P(x + .5, z + .5, top + 0.75);
+      g.strokeStyle = "rgba(0,0,0,.6)"; g.lineWidth = Math.max(1.5, S * 0.05); g.beginPath(); g.moveTo(bx, by); g.lineTo(hx, hy); g.stroke();
+      g.beginPath(); g.ellipse(bx, by, S * 0.22, S * 0.22 * sp, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.3)"; g.fill();
+      const r = Math.max(7, S * 0.28); g.beginPath(); g.arc(hx, hy, r, 0, Math.PI * 2); g.fillStyle = st.ring ? "rgba(155,93,229,.85)" : st.bg; g.fill();
+      g.strokeStyle = st.boss ? "#ffd34d" : "#fff"; g.lineWidth = st.boss ? 3 : 1.5; g.stroke();
+      g.fillStyle = "#fff"; g.font = `bold ${Math.floor(r * 1.1)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(st.label, hx, hy + 1);
+    }
+  }
+}
+const v3el = $("v3");
+v3el.addEventListener("pointerdown", e => { if (e.target.tagName === "BUTTON") return; v3el.setPointerCapture(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]); v3.g = null; });
+v3el.addEventListener("pointermove", e => {
+  if (!v3.pts.has(e.pointerId)) return;
+  const prev = v3.pts.get(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (v3.pts.size === 1) { v3.yaw += (e.clientX - prev[0]) * 0.01; v3.pitch = Math.max(0.25, Math.min(1.57, v3.pitch + (e.clientY - prev[1]) * 0.006)); }
+  else { const [a, b] = [...v3.pts.values()]; const dd = Math.hypot(a[0] - b[0], a[1] - b[1]); if (v3.g) v3.zoom = Math.max(0.4, Math.min(5, v3.zoom * dd / v3.g)); v3.g = dd; }
+  draw3d();
+});
+const v3up = e => { v3.pts.delete(e.pointerId); v3.g = null; };
+v3el.addEventListener("pointerup", v3up); v3el.addEventListener("pointercancel", v3up);
+v3el.addEventListener("wheel", e => { e.preventDefault(); v3.zoom = Math.max(0.4, Math.min(5, v3.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1))); draw3d(); }, { passive: false });
+$("b3d").onclick = open3d;
+$("v3Close").onclick = () => { v3el.style.display = "none"; };
+$("v3L").onclick = () => { v3.yaw -= Math.PI / 2; draw3d(); };
+$("v3R").onclick = () => { v3.yaw += Math.PI / 2; draw3d(); };
+$("v3Top").onclick = () => { v3.pitch = v3.pitch > 1.5 ? 0.75 : 1.57; draw3d(); };
+addEventListener("resize", () => { if (v3el.style.display !== "none") size3d(); });
 
 // ================================================================ 画面の更新
 function setTool(t) { tool = t; document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t)); }
