@@ -257,7 +257,8 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
     <button id="v3Close">← 戻る</button><div style="flex:1;font-weight:bold" id="v3Title"></div>
     <button id="v3L">⟲</button><button id="v3R">⟳</button><button id="v3Top">リセット</button>
   </div>
-  <div class="muted" style="position:absolute;left:10px;bottom:calc(8px + env(safe-area-inset-bottom))">1本指で回す・上下で傾き　2本指で拡大</div>
+  <div class="muted" style="position:absolute;left:10px;bottom:calc(8px + env(safe-area-inset-bottom))">1本指で回す・上下で傾き　2本指で拡大　立て札をタップで中身</div>
+  <div id="v3Info" style="display:none;position:absolute;left:8px;right:8px;bottom:calc(34px + env(safe-area-inset-bottom));max-height:36%;overflow:auto;background:rgba(42,47,55,.93);border:1px solid var(--line);border-radius:12px;padding:6px 10px;font-size:13px"></div>
 </div>
 
 <div id="toast"></div>
@@ -1363,6 +1364,7 @@ function draw3d() {
   for (let z = 0; z < map.h; z++) for (let x = 0; x < map.w; x++) cells.push([x, z, depth(x + .5, z + .5)]);
   cells.sort((a, b) => a[2] - b[2]);
   const fs = Math.max(9, S * 0.42);
+  v3.hits = []; // タップで中身を出すための、立て札の画面の位置
   // 方角の目印（奥＝敵側）。マップより先に描いて、立て札の下にする
   { const [ax, ay] = P(map.w / 2, -1.2, 0); g.fillStyle = "#f0b44c"; g.font = `bold ${Math.max(12, fs * .7)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("奥（敵側）", ax, ay); }
   for (const [x, z] of cells) {
@@ -1370,6 +1372,8 @@ function draw3d() {
     const top = (BASE[sym] ?? 0.25) + map.height[z][x] * STEP;
     if (sym === "H" || sym === "B") { box(x, z, x + 1, z + 1, 0, 0.05, "#4080d9", "rgba(0,0,0,.25)"); box(x + .08, z + .08, x + .92, z + .92, 0.1, top, col, "rgba(0,0,0,.25)"); }
     else box(x, z, x + 1, z + 1, 0, top, col, "rgba(0,0,0,.22)");
+    if (v3.range) { const i = z * map.w + x, rc = v3.range.move.has(i) ? "rgba(60,140,255,.55)" : v3.range.atk.has(i) ? "rgba(255,70,70,.5)" : null; // タップした敵・味方の動ける所（青）と攻撃が届く所（赤）
+      if (rc) poly([P(x, z, top), P(x + 1, z, top), P(x + 1, z + 1, top), P(x, z + 1, top)], rc); }
     if (sym === "T" || sym === "W") { // 森：小さな木
       const n = sym === "W" ? 2 : 1;
       for (let i = 0; i < n; i++) { const fx = x + 0.3 + i * 0.4, fz = z + 0.3 + i * 0.35; box(fx - .06, fz - .06, fx + .06, fz + .06, top, top + .2, "#6b4a2b"); box(fx - .2, fz - .2, fx + .2, fz + .2, top + .2, top + .55, shade(col, -0.1)); }
@@ -1382,26 +1386,71 @@ function draw3d() {
       const st = placeStyle(pc), [bx, by] = P(x + .5, z + .5, top), [hx, hy] = P(x + .5, z + .5, top + 0.75);
       g.strokeStyle = "rgba(0,0,0,.6)"; g.lineWidth = Math.max(1.5, S * 0.05); g.beginPath(); g.moveTo(bx, by); g.lineTo(hx, hy); g.stroke();
       g.beginPath(); g.ellipse(bx, by, S * 0.22, S * 0.22 * sp, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.3)"; g.fill();
-      const r = Math.max(7, S * 0.28); g.beginPath(); g.arc(hx, hy, r, 0, Math.PI * 2); g.fillStyle = st.ring ? "rgba(155,93,229,.85)" : st.bg; g.fill();
+      const r = Math.max(7, S * 0.28); v3.hits.push({ x: hx, y: hy, r, c: pc, gx: x, gy: z }); g.beginPath(); g.arc(hx, hy, r, 0, Math.PI * 2);
+      if (v3.picked && v3.picked.gx === x && v3.picked.gy === z) { g.save(); g.strokeStyle = "#f0b44c"; g.lineWidth = 4; g.beginPath(); g.arc(hx, hy, r + 5, 0, Math.PI * 2); g.stroke(); g.restore(); g.beginPath(); g.arc(hx, hy, r, 0, Math.PI * 2); } g.fillStyle = st.ring ? "rgba(155,93,229,.85)" : st.bg; g.fill();
       g.strokeStyle = st.boss ? "#ffd34d" : "#fff"; g.lineWidth = st.boss ? 3 : 1.5; g.stroke();
       g.fillStyle = "#fff"; g.font = `bold ${Math.floor(r * 1.1)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(st.label, hx, hy + 1);
     }
   }
 }
 const v3el = $("v3");
-v3el.addEventListener("pointerdown", e => { if (e.target.tagName === "BUTTON") return; v3el.setPointerCapture(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]); v3.g = null; });
+v3el.addEventListener("pointerdown", e => { if (e.target.tagName === "BUTTON" || e.target.closest("#v3Info")) return; v3el.setPointerCapture(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]); v3.g = null; v3.tap = v3.pts.size === 1 ? [e.clientX, e.clientY] : null; });
 v3el.addEventListener("pointermove", e => {
   if (!v3.pts.has(e.pointerId)) return;
   const prev = v3.pts.get(e.pointerId); v3.pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (v3.tap && Math.hypot(e.clientX - v3.tap[0], e.clientY - v3.tap[1]) < 10) return; // タップのうちは回さない
+  v3.tap = null;
   if (v3.pts.size === 1) { v3.yaw -= (e.clientX - prev[0]) * 0.01; /* 指を右に動かすと、指の下の地面が右へ回る */ v3.pitch = Math.max(0.25, Math.min(1.57, v3.pitch + (e.clientY - prev[1]) * 0.006)); }
   else { const [a, b] = [...v3.pts.values()]; const dd = Math.hypot(a[0] - b[0], a[1] - b[1]); if (v3.g) v3.zoom = Math.max(0.4, Math.min(5, v3.zoom * dd / v3.g)); v3.g = dd; }
   draw3d();
 });
-const v3up = e => { v3.pts.delete(e.pointerId); v3.g = null; };
+const v3up = e => { if (!v3.pts.has(e.pointerId)) return; v3.pts.delete(e.pointerId); v3.g = null; if (v3.tap && e.type === "pointerup" && !v3.pts.size) v3Pick(e.clientX, e.clientY); v3.tap = null; };
+// 立て札をタップ：その中身（敵ならステータス・持ち物、宝箱なら中身）を下に出す。何もない所なら閉じる
+function v3Pick(px, py) {
+  let hit = null;
+  for (const h of v3.hits || []) if (Math.hypot(px - h.x, py - h.y) <= h.r + 10) hit = h; // 手前に描いたもの（後ろの方）を優先
+  v3.picked = hit; v3.range = hit ? rangeAt(hit.gx, hit.gy) : null; const box = $("v3Info");
+  if (!hit) { box.style.display = "none"; draw3d(); return; }
+  box.innerHTML = markDetail(hit.c, hit.gx, hit.gy); box.style.display = "block"; draw3d();
+}
+function markDetail(c, x, y) {
+  const rows = [], row = (k, v) => { if (v !== "" && v != null) rows.push(`<div class="stat"><b>${esc(k)}</b><span>${esc(v)}</span></div>`); };
+  const t = terrainBy(map.terrain[y][x]);
+  let title = placeName(c);
+  const u = map.units.find(z => z.mark === c);
+  if (u) {
+    const sp = unitSpec(c), w = weaponOf(u);
+    title = `${u.ally ? "味方のゲスト" : u.boss ? "ボス" : "敵"}：${u.name || u.unit}`;
+    if (u.name) row("元のユニット", u.unit);
+    row("Lv", u.level ? u.level : "ステージの決まり");
+    if (u.cls) row("職業", u.cls);
+    row("武器", w || "（不明）");
+    row("移動・射程", `移動${sp.move}・射程${sp.min === sp.max ? sp.min : sp.min + "〜" + sp.max}（青＝動ける／赤＝攻撃が届く）`);
+    row("持ち物", splitList(u.items).join("、") || "いつもの持ち物");
+    if (u.skills) row("スキル（足す）", splitList(u.skills).join("、"));
+    const acts = [u.hold ? "動かない" : "", u.wait ? "待つ（近づくまで動かない）" : "", u.squad ? `部隊「${u.squad}」` : ""].filter(z => z);
+    if (acts.length) row("動き方", acts.join("・"));
+    if (u.drop) row("落とすもの", u.drop);
+    if (u.gold >= 0) row("お金", u.gold + "G");
+  }
+  const ch = map.chests.find(z => z.mark === c);
+  if (ch) row("宝箱の中身", [ch.item, ch.gold ? ch.gold + "G" : ""].filter(z => z).join("＋"));
+  if (c === "C") row("宝箱の中身", "ランダム（ステージで決まる）");
+  if (c === "E") { const sp = unitSpec(c); row("中身", "ステージのいつもの敵（どれが出るかはゲームで決まる）"); row("移動・射程（目安）", `移動${sp.move}・射程${sp.min === sp.max ? sp.min : sp.min + "〜" + sp.max}（青＝動ける／赤＝攻撃が届く）`); }
+  if (c === "P" || (c >= "1" && c <= "9")) row("出撃", c === "1" ? "主人公がここから出る" : c === "P" ? "自軍がここから出る" : `${c}番目の仲間がここから出る`);
+  if (c === "*") row("目標", "ここに着くとクリア（クリア条件が「指定マス到達」のとき）");
+  const f = map.features.find(z => z.mark === c); if (f) row("マスの特徴", f.feature);
+  for (const title2 of EXTRA_SECTIONS) {
+    const sec = extraSection(map, title2); if (!sec) continue;
+    for (const l of sec.lines) { const m = l.trim().match(/^(.)\s*[:：]\s*(.*)$/); if (m && m[1] === c) row(title2, m[2]); }
+  }
+  row("マス", `横${x + 1}・縦${y + 1}　${t ? t.name : map.terrain[y][x]}　高さ${map.height[y][x]}`);
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="flex:1;font-size:15px">${esc(title)}</b><button class="small" onclick="v3.picked=null;v3.range=null;$('v3Info').style.display='none';draw3d()">閉じる</button></div>` + rows.join("");
+}
 v3el.addEventListener("pointerup", v3up); v3el.addEventListener("pointercancel", v3up);
 v3el.addEventListener("wheel", e => { e.preventDefault(); v3.zoom = Math.max(0.4, Math.min(5, v3.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1))); draw3d(); }, { passive: false });
 $("b3d").onclick = open3d;
-$("v3Close").onclick = () => { v3el.style.display = "none"; };
+$("v3Close").onclick = () => { v3el.style.display = "none"; v3.picked = null; v3.range = null; $("v3Info").style.display = "none"; };
 $("v3L").onclick = () => { v3.yaw -= Math.PI / 2; draw3d(); };
 $("v3R").onclick = () => { v3.yaw += Math.PI / 2; draw3d(); };
 $("v3Top").onclick = () => { v3.yaw = 0; v3.pitch = 1.57; v3.zoom = 1; draw3d(); }; // リセット：真上から、奥（敵側）が上、まっすぐ
