@@ -120,13 +120,27 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
 
 <!-- マップの一覧 -->
 <div class="sheet" id="sMaps"><div class="box">
-  <h2><span>マップの一覧</span><button class="small" data-close>閉じる</button></h2>
-  <div class="row"><button id="bNew">＋新しいマップ</button><button id="bImport">テキストから開く</button></div>
-  <div id="mapList"></div>
+  <h2><span>メニュー</span><button class="small" data-close>閉じる</button></h2>
+  <button id="bMyMaps" class="on" style="width:100%;min-height:52px;font-size:16px">📂 作成マップ（<span id="mapCount">0</span>）</button>
+  <div class="row" style="margin-top:8px"><button id="bNew">＋新しいマップ</button><button id="bImport">テキストから開く</button></div>
   <h3>ゲームの一覧（地形・敵・飾りなど）</h3>
   <div class="muted" id="palInfo"></div>
   <div class="row" style="margin-top:6px"><button id="bPalLoad" class="small">palette.json を読む</button><button id="bPalReset" class="small">ページの一覧に戻す</button></div>
   <input type="file" id="fPal" accept=".json,application/json,text/plain" style="display:none">
+</div></div>
+
+<!-- 作成マップ：押すと開く。複製・消すは「整理する」を押したときだけ出す（まちがって消さないように） -->
+<div class="sheet" id="sMyMaps"><div class="box">
+  <h2><span>作成マップ</span><button class="small" id="bEditMaps">整理する</button><button class="small" data-close>閉じる</button></h2>
+  <div class="muted" id="myMapsHelp">押すとそのマップを開きます。</div>
+  <div id="mapList"></div>
+</div></div>
+
+<!-- 消す前の確かめ -->
+<div class="sheet" id="sConfirm"><div class="box">
+  <h2><span id="confirmTitle">-</span></h2>
+  <div class="muted">消したマップは元に戻せません。</div>
+  <div class="row" style="margin-top:14px"><button id="bConfirmNo">やめる</button><button id="bConfirmYes" class="danger" style="border-color:var(--bad)">消す</button></div>
 </div></div>
 
 <!-- 新しいマップ -->
@@ -943,31 +957,50 @@ document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeSheets);
 document.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { const [id, d] = b.dataset.step.split(":"); const el = $(id); el.value = clampSize(toInt(el.value, 1) + Number(d)); });
 const clampSize = n => Math.max(1, Math.min(60, n));
 
+let editingMaps = false;
 function refreshMapList() {
   const L = $("mapList"); L.innerHTML = "";
   const ids = Object.keys(maps).sort((a, b) => maps[b].updated - maps[a].updated);
+  $("mapCount").textContent = ids.length;
+  $("bEditMaps").textContent = editingMaps ? "整理を終える" : "整理する";
+  $("bEditMaps").classList.toggle("on", editingMaps);
+  $("myMapsHelp").textContent = editingMaps ? "複製・消すができます。終わったら「整理を終える」を押してください。" : "押すとそのマップを開きます。";
   if (!ids.length) L.innerHTML = `<div class="muted" style="margin:10px 0">まだマップがありません。</div>`;
   for (const id of ids) {
     const m = parseMap(maps[id].text).map;
-    const d = document.createElement("div"); d.className = "card";
     const when = new Date(maps[id].updated).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    d.innerHTML = `<div><b>${esc(m.name)}</b>${id === curId ? ' <span class="okmsg">（開いている）</span>' : ""}</div>
-      <div class="muted">${m.w}×${m.h}マス　${m.objective || "いつものクリア条件"}${m.stages ? "　ステージ " + esc(m.stages) : ""}　${when}</div>
-      <div class="row"><button class="small">開く</button><button class="small">複製</button><button class="small danger">消す</button></div>`;
-    const [bo, bc, bd] = d.querySelectorAll("button");
-    bo.onclick = () => { saveNow(); openMap(id); closeSheets(); };
-    bc.onclick = () => { saveNow(); const mm = parseMap(maps[id].text).map; mm.name += "のコピー"; addMap(mm); closeSheets(); };
-    bd.onclick = () => {
-      if (bd.dataset.ok !== "1") { bd.dataset.ok = "1"; bd.textContent = "もう一度押すと消す"; return; }
-      delete maps[id]; saveAll(); cloudDelete(id);
-      if (id === curId) { curId = null; map = null; const rest = Object.keys(maps); if (rest.length) openMap(rest[0]); else newDefault(); }
-      refreshMapList();
-    };
+    const info = `<div><b>${esc(m.name)}</b>${id === curId ? ' <span class="okmsg">（開いている）</span>' : ""}</div>
+      <div class="muted">${m.w}×${m.h}マス　${esc(m.objective || "いつものクリア条件")}${m.stages ? "　ステージ " + esc(m.stages) : ""}　${when}</div>`;
+    if (!editingMaps) {
+      const b = document.createElement("button"); b.className = "card"; b.style.cssText = "display:block;width:100%;text-align:left";
+      b.innerHTML = info;
+      b.onclick = () => { saveNow(); openMap(id); closeSheets(); };
+      L.appendChild(b); continue;
+    }
+    const d = document.createElement("div"); d.className = "card";
+    d.innerHTML = info + `<div class="row"><button class="small">複製</button><button class="small danger">消す</button></div>`;
+    const [bc, bd] = d.querySelectorAll("button");
+    bc.onclick = () => { saveNow(); const mm = parseMap(maps[id].text).map; mm.name += "のコピー"; const cur = curId; addMap(mm); openMap(cur); refreshMapList(); toast("複製しました"); };
+    bd.onclick = () => askDelete(id, m.name);
     L.appendChild(d);
   }
+}
+function askDelete(id, name) {
+  $("confirmTitle").textContent = `「${name}」を消しますか？`;
+  $("bConfirmNo").onclick = () => openSheet("sMyMaps");
+  $("bConfirmYes").onclick = () => {
+    delete maps[id]; saveAll(); cloudDelete(id);
+    if (id === curId) { curId = null; map = null; const rest = Object.keys(maps); if (rest.length) openMap(rest[0]); else newDefault(); }
+    refreshMapList(); openSheet("sMyMaps"); toast("消しました");
+  };
+  openSheet("sConfirm");
+}
+function refreshPalInfo() {
   $("palInfo").textContent = `今の一覧：${PAL.source || "読み込んだファイル"}（地形 ${PAL.terrains.length}・ユニット ${PAL.units.length + PAL.bosses.length}・飾り ${PAL.props.length}）`;
 }
-$("bMaps").onclick = () => { saveNow(); refreshMapList(); openSheet("sMaps"); };
+$("bMaps").onclick = () => { saveNow(); refreshMapList(); refreshPalInfo(); openSheet("sMaps"); };
+$("bMyMaps").onclick = () => { editingMaps = false; refreshMapList(); openSheet("sMyMaps"); };
+$("bEditMaps").onclick = () => { editingMaps = !editingMaps; refreshMapList(); };
 $("bNew").onclick = () => {
   $("nName").value = "新しいマップ" + (Object.keys(maps).length + 1);
   $("nT").innerHTML = PAL.terrains.map(t => `<option value="${esc(t.s)}">${esc(t.name)}（${esc(t.s)}）</option>`).join("");
@@ -989,10 +1022,10 @@ $("bImpOk").onclick = () => {
 $("bPalLoad").onclick = () => $("fPal").click();
 $("fPal").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  try { const p = JSON.parse(await f.text()); if (!p.terrains) throw 0; PAL = Object.assign({}, DEFAULT_PALETTE, p); LS.set(PAL_KEY, JSON.stringify(PAL)); cloudPutPalette(PAL); refreshAll(); refreshMapList(); toast("ゲームの一覧を読み込みました"); }
+  try { const p = JSON.parse(await f.text()); if (!p.terrains) throw 0; PAL = Object.assign({}, DEFAULT_PALETTE, p); LS.set(PAL_KEY, JSON.stringify(PAL)); cloudPutPalette(PAL); refreshAll(); refreshPalInfo(); toast("ゲームの一覧を読み込みました"); }
   catch (x) { toast("palette.json として読めませんでした"); }
 };
-$("bPalReset").onclick = () => { LS.del(PAL_KEY); cloudPutPalette(null); PAL = DEFAULT_PALETTE; refreshAll(); refreshMapList(); toast("ページの一覧に戻しました"); };
+$("bPalReset").onclick = () => { LS.del(PAL_KEY); cloudPutPalette(null); PAL = DEFAULT_PALETTE; refreshAll(); refreshPalInfo(); toast("ページの一覧に戻しました"); };
 
 // ---- マップ設定
 function openSettings() {
@@ -1121,7 +1154,7 @@ function cloudPutPalette(p) { if (cloud.db && cloud.ready) cloud.db.doc("config/
       if (curChanged && !stroke) { if (maps[curId]) { const keep = { ...view }; map = parseMap(maps[curId].text).map; refreshAll(); view = keep; draw(); } else { const ids = Object.keys(maps); if (ids.length) openMap(ids[0]); } }
       else if (first && !maps[curId]) { const ids = Object.keys(maps); if (ids.length) openMap(ids[0]); }
       if (first) setCloudState("☁ 保存済み");
-      if ($("sMaps").classList.contains("open")) refreshMapList();
+      if ($("sMyMaps").classList.contains("open")) refreshMapList();
     }, () => { clearTimeout(timer); setCloudState("この端末だけに保存"); cloud.db = null; });
   } catch (e) { setCloudState(""); }
 })();
