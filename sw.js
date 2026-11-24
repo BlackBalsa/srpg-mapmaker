@@ -1,6 +1,6 @@
 // オフラインで動かすための仕組み（Webアプリとして置いたときだけ使われる。Claudeのページでは使われない）。
 // 電波があるときは毎回いちばん新しい版を取りに行き（3秒で返事がなければ保存しておいた版）、電波がないときは保存しておいた版を出す
-const CACHE = "srpg-mapmaker-v6";
+const CACHE = "srpg-mapmaker-v7";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: "reload" }))))); self.skipWaiting(); });
 self.addEventListener("activate", e => e.waitUntil((async () => {

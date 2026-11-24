@@ -138,6 +138,7 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <h2><span>メニュー</span><button class="small" data-close>閉じる</button></h2>
   <button id="bMyMaps" class="on" style="width:100%;min-height:52px;font-size:16px">📂 作成マップ（<span id="mapCount">0</span>）</button>
   <div class="row" style="margin-top:8px"><button id="bNew">＋新しいマップ</button><button id="bImport">テキストから開く</button></div>
+  <button id="bRefs" style="width:100%;margin-top:8px">📚 参考マップ（ほかの作品を見る）</button>
   <h3>バックアップ（全部のマップを1ファイルに）</h3>
   <div class="muted">機種変更や消えたときのために。保存したファイル（.json）を「戻す」で読むと、新しいほうのマップが残ります。</div>
   <div class="row" style="margin-top:6px"><button id="bBackup" class="small">💾 全部を保存</button><button id="bRestore" class="small">📥 バックアップから戻す</button></div>
@@ -234,6 +235,22 @@ textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   <div class="muted" style="margin-top:8px">自分で渡すとき：コピーしてメールやLINEで自分に送るか、.txt を保存して Googleドライブなどに置き、PCの Unity のメニュー「SRPG → スマホのマップ作り → 取り込む」で入れます（ここに貼り付けてもOK）。</div>
   <label>中身（<span id="outFile"></span>）</label>
   <textarea id="outText" rows="14" readonly></textarea>
+</div></div>
+
+<!-- 参考マップ：作品ごとの一覧 -->
+<div class="sheet" id="sRefs"><div class="box">
+  <h2><span>参考マップ</span><button class="small" data-close>閉じる</button></h2>
+  <div class="chips" id="refGames"></div>
+  <div class="chips" id="refParts" style="margin-top:6px"></div>
+  <div class="chips" id="refTags" style="margin-top:6px"></div>
+  <div class="muted" id="refNote" style="margin-top:6px"></div>
+  <div id="refList"></div>
+  <div class="row" style="margin-top:10px"><button id="bRefLoad" class="small">作品のファイル（.json）を読む</button></div>
+  <input type="file" id="fRef" accept=".json,application/json,text/plain" style="display:none">
+</div></div>
+<div class="sheet" id="sRefDetail"><div class="box">
+  <h2><button class="small" id="refBack">← 一覧</button><span id="refTitle">-</span><button class="small" data-close>閉じる</button></h2>
+  <div id="refBody"></div>
 </div></div>
 
 <!-- 集計 -->
@@ -357,6 +374,531 @@ const DEFAULT_PALETTE = {
   ]
 };
 /*PALETTE-END*/
+/*REFS-START*/
+const REF_GAMES = [
+ {
+  "game": "ファイアーエムブレム 風花雪月",
+  "short": "風花雪月",
+  "id": "fe16",
+  "source": "ペガサスナイト 風花雪月攻略wiki（https://www.pegasusknight.com/wiki/fe16/）の各戦闘ページ",
+  "note": "マス目の並び（地形の図）はまだない。自由度・難しさは攻略ページの記述から判断した3段階の目安。ルートで同じ地図の章は1枚。構造だけ学ぶ（並びは写さない）",
+  "read": "2026-11-24",
+  "grid_format": "grid を足すときは {\"terrain\":[行の文字列...],\"legend\":{\"記号\":\"意味\"}}。1行目が奥（敵側）",
+  "maps": [
+   {
+    "name": "序章 夜明けの遭遇戦",
+    "part": "第一部",
+    "size": "小",
+    "deploy": "4人",
+    "clear": "ボス撃破",
+    "features": "森と平地だけ。ボスの部隊は他を倒すまで動かない",
+    "strategy": "森に立って釣り、弓で削って総攻撃。基本の練習",
+    "freedom": "低",
+    "difficulty": "低",
+    "patterns": [
+     "待つ敵を釣る"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.1 鷲と獅子と鹿",
+    "part": "第一部",
+    "size": "20×22",
+    "deploy": "5人",
+    "clear": "全滅",
+    "features": "壊せる柵、左の森に待機の敵、右上は突撃の敵",
+    "strategy": "正面を引きつける→森を間接で釣る→各個撃破。まっすぐ行くと2軍に挟まれる",
+    "freedom": "中",
+    "difficulty": "低",
+    "patterns": [
+     "待つ敵を釣る"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.2 赤き谷の討伐戦",
+    "part": "第一部",
+    "size": "18×30",
+    "deploy": "9人",
+    "clear": "ボス撃破",
+    "features": "橋が関所。弓兵が多い。ボスは回復床で不動。敵は近くの動きで突撃に変わる",
+    "strategy": "橋の手前で待つか、渡って中央で戦うか。先に降りる階段で敵の動きが変わる",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "待つ敵を釣る",
+     "連動"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.3 マグドレド奇襲戦",
+    "part": "第一部",
+    "size": "約26×20",
+    "deploy": "10人",
+    "clear": "ボス撃破",
+    "features": "霧（見えるのは周り2マス、たいまつで7）。中央の森の魔導士を倒すと霧が晴れ、増援が出る。突っ込む友軍",
+    "strategy": "友軍を追って全員守るか、見捨てて安全に進むか。上下2隊で進む",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "霧",
+     "守る対象"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.4 女神再誕の儀",
+    "part": "第一部",
+    "size": "23×26",
+    "deploy": "10人",
+    "clear": "ボス撃破（25ターン制限）",
+    "features": "真ん中に強すぎる中ボス（不動）。左右の通路に宝箱。7ターン目に後ろから増援",
+    "strategy": "中ボスを倒すか、左右から回り込んで無視するか。分かれるか片側にまとめるか",
+    "freedom": "高",
+    "difficulty": "中",
+    "patterns": [
+     "2本以上の道",
+     "時間制限"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.5 ゴーティエ家督争乱",
+    "part": "第一部",
+    "size": "約21×25",
+    "deploy": "10人",
+    "clear": "ボス撃破（2段階）",
+    "features": "壁と柱の通路。弓兵の範囲に入ると全員突撃。右上の柱を越えると増援。ボスは倒すと魔獣になって第2ラウンド",
+    "strategy": "2隊に分ける。増援を受け切るか一気に抜けるか。後半のために切り札を温存するか",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "連動",
+     "線を越えると起きる"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.6 秘密の地下道",
+    "part": "第一部",
+    "size": "22×23",
+    "deploy": "10人",
+    "clear": "中ボス撃破 か それ以外全滅（25ターン）",
+    "features": "ワープ床と制御装置（解除で新しいワープが開く／敵の強化床が消える）。扉を開けると強敵が突撃。装置の部屋に入ると増援",
+    "strategy": "勝ち方が2つ。宝箱・盗みとターン数の取り合い",
+    "freedom": "高",
+    "difficulty": "中",
+    "patterns": [
+     "解けば楽になる装置",
+     "ワープ"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.7 グロンダーズ鷲獅子戦",
+    "part": "第一部",
+    "size": "30×30",
+    "deploy": "10人",
+    "clear": "全滅",
+    "features": "三つ巴。中央の丘に弓砲台（奪い合い）。倒した数で敵が強くなる",
+    "strategy": "分かれて左右を引きつけるか、中央突破か。砲台を先に取る",
+    "freedom": "高",
+    "difficulty": "中",
+    "patterns": [
+     "三つ巴",
+     "奪える強いマス"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.8 ルミール狂乱戦",
+    "part": "第一部",
+    "size": "約21×22",
+    "deploy": "10人",
+    "clear": "全滅→途中でボス撃破に変化",
+    "features": "燃える床。村人6人を救出。上2か所から無限増援（出口をふさぐと止まる）。ラインより南で仕掛けが動き、ボスと増援が出る。突っ込む友軍",
+    "strategy": "全員救うか一部か。増援を止めるか稼ぐか。仕掛けをいつ動かすか",
+    "freedom": "高",
+    "difficulty": "中",
+    "patterns": [
+     "守る対象",
+     "止められる増援",
+     "線を越えると起きる"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.9 旧礼拝堂救出戦",
+    "part": "第一部",
+    "size": "20×20",
+    "deploy": "10人",
+    "clear": "全滅",
+    "features": "魔獣7体が捕まった生徒3人を狙う。単騎で突っ込む友軍（倒れると敗北）。弓砲台",
+    "strategy": "2手に分かれて救う。友軍を閉じ込める手も",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "守る対象"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.10 封じられた森の罠",
+    "part": "第一部",
+    "size": "20×30",
+    "deploy": "10人",
+    "clear": "ボス撃破→後半戦",
+    "features": "連戦：前半のボスを倒すと、回復なしで後半戦（森の中から開始）",
+    "strategy": "前半で切り札をどれだけ使うかの配分",
+    "freedom": "低",
+    "difficulty": "高",
+    "patterns": [
+     "連戦"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.11 聖墓の戦い",
+    "part": "第一部",
+    "size": "約21×26",
+    "deploy": "9人",
+    "clear": "ボス撃破",
+    "features": "聖櫃が通路を左右・中央に区切る。盗賊が宝を奪って逃げる。ボスの周りは範囲に入ると一斉突撃",
+    "strategy": "左右に速い兵を急行させて先回り。宝を全部守るかどうか",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "逃げる敵・奪う敵",
+     "連動"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.12 ガルグ=マクの戦い",
+    "part": "第一部",
+    "size": "25×32",
+    "deploy": "10〜11人",
+    "clear": "ボス撃破（防衛地点を守る）",
+    "features": "砲台の半分を敵が持つ→奪い返す。中ボスが複数（倒すと別の敵が動く・友軍が来る）。ある中ボスに近づくと無限増援。ボスは防衛地点へ進む",
+    "strategy": "どの砲台から奪うか、中ボスを倒す順番",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "奪える強いマス",
+     "止められる増援"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.13 夜明けの追討戦",
+    "part": "第二部",
+    "size": "26×17",
+    "deploy": "2人→合流",
+    "clear": "ボス撃破",
+    "features": "2人で始まり、3ターン目・5ターン目に仲間が合流。敵は全員待機で、範囲に入ったまま敵ターンを迎えるとその部隊ごと動く。偽のボスを倒すと本物が出て逃げる",
+    "strategy": "草むらと狭い通路で部隊を1つずつ釣る。宝箱4つの順番",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "少人数で始まる",
+     "連動",
+     "逃げる敵・奪う敵"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.14 ガルグ=マク籠城戦",
+    "part": "第二部",
+    "size": "20×26",
+    "deploy": "11人",
+    "clear": "全滅→減るとボス撃破（拠点2つを守る）",
+    "features": "友軍を投石機まで護衛すると火攻め：敵陣が燃える床になり、敵の多くが撤退。2ターンごとの飛行増援も止まる",
+    "strategy": "火攻めを急ぐか、撤退前にレア品持ちを倒すか",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "解けば楽になる装置",
+     "守る対象"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.15 アリル奇襲戦（煉獄の谷）",
+    "part": "第二部",
+    "size": "20×30",
+    "deploy": "10人",
+    "clear": "ボス撃破",
+    "features": "噴火口を越えて進む。6ターン目に遠くに友軍が現れ、守る対象になる。踏むと増援が始まるスイッチ",
+    "strategy": "最初から友軍の出る方へ向かうか。スイッチを踏むか",
+    "freedom": "中",
+    "difficulty": "中",
+    "patterns": [
+     "守る対象",
+     "線を越えると起きる"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.16 ミルディン大橋",
+    "part": "第二部",
+    "size": "29×20",
+    "deploy": "10人",
+    "clear": "敵将全撃破",
+    "features": "大橋と砦。増援5系統：終わりなく出るものを止める方法（呼び手を倒す・周り4体を倒す）と、線を越えると出るもの",
+    "strategy": "線を越える順番を調節して、増援を一度に出さない",
+    "freedom": "高",
+    "difficulty": "中",
+    "patterns": [
+     "止められる増援",
+     "線を越えると起きる"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.17 グロンダーズの会戦",
+    "part": "第二部",
+    "size": "30×30",
+    "deploy": "10人",
+    "clear": "敵将全撃破",
+    "features": "三つ巴。中央の丘の弓砲台、制圧すると丘が炎上。第三勢力は範囲に入るまで動かず、そちらを先に殴るともう片方が一斉に進む",
+    "strategy": "敵どうしをぶつける。森で待って狙われないようにする",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "三つ巴",
+     "奪える強いマス"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.18 王都奪還戦",
+    "part": "第二部",
+    "size": "30×30",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "中央に強化された大型敵と遠距離砲。右上の装置で両方解除。左右の魔道砲台は奪える",
+    "strategy": "右から（装置）か、左から（砲台）か。中央は避ける",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "解けば楽になる装置",
+     "奪える強いマス"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.19 デアドラ救援戦",
+    "part": "第二部",
+    "size": "30×30",
+    "deploy": "11人",
+    "clear": "ボス撃破",
+    "features": "守る対象3人（砦で不動・橋の先頭・市街で孤立）。市街の3つの門から3ターンごと増援、門の前に立つと止まる",
+    "strategy": "急いで救うか、中央に集めて4〜5ターンで決着か",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "守る対象",
+     "止められる増援"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.20 メリセウス攻防戦",
+    "part": "第二部",
+    "size": "約30×30",
+    "deploy": "10人",
+    "clear": "ボス撃破",
+    "features": "砲台4つ。左右に2部隊（片方を殴るともう片方が突撃）。中央の巨大魔獣を殴ると両翼が突撃。下の階段から2ターンごと増援",
+    "strategy": "1ターンでボスに飛び込むか、全部倒して宝を取るか",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "連動",
+     "奪える強いマス"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.21 アンヴァル総力戦",
+    "part": "第二部",
+    "size": "約26×33",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "市街。左に魔道砲台、右に投石機と弓砲台。動かない飛行魔獣が中ボスを倒すと突撃。増援がターン・撃破・進入で多数",
+    "strategy": "左右の部隊を早く合流。魔獣を先に倒すか中ボスへ直行か",
+    "freedom": "中",
+    "difficulty": "高",
+    "patterns": [
+     "連動",
+     "奪える強いマス"
+    ],
+    "grid": null
+   },
+   {
+    "name": "EP.22 帝都決戦",
+    "part": "第二部",
+    "size": "25×32",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "宮殿。ボスは全体に届く遠距離攻撃。階段をふさぐと増援が止まる。倒すと一派が撤退する不動の強敵",
+    "strategy": "囮で引きつける、1対1に持ち込む、ワープで急襲",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "止められる増援"
+    ],
+    "grid": null
+   },
+   {
+    "name": "紅花 EP.14 デアドラの戦い",
+    "part": "第二部",
+    "size": "約30×30",
+    "deploy": "11人",
+    "clear": "ボス撃破",
+    "features": "海と船（甲板は狭く渋滞）。市街の門の前の敵が2ターンごと増援を呼ぶ（先に倒すと止まる）。毎ターン飛行増援も",
+    "strategy": "市街から止めて進むか、船の上からか、短期決戦か",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "止められる増援"
+    ],
+    "grid": null
+   },
+   {
+    "name": "紅花 EP.16 アリアンロッド攻城戦",
+    "part": "第二部",
+    "size": "約30×27",
+    "deploy": "11人",
+    "clear": "敵将5人全撃破",
+    "features": "増援なし。ダメージ床（毎ターン20%）を装置2か所で消せる。出撃地点が下と右の2か所",
+    "strategy": "強い2人を同時に相手しない。右の3人で引きつけ、装置を先に解くか",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "解けば楽になる装置",
+     "ダメージ床",
+     "分断スタート"
+    ],
+    "grid": null
+   },
+   {
+    "name": "紅花 EP.17 タルティーン平原",
+    "part": "第二部",
+    "size": "約30×30",
+    "deploy": "10人",
+    "clear": "敵将全撃破",
+    "features": "川と橋。橋に入ると別軍が出て、敵の魔獣化が2ターンごとに進む。特定の場所で第三勢力も参戦",
+    "strategy": "倒す順番（右回りが安定）。二手に分かれるか、川を一気に渡るか",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "線を越えると起きる",
+     "三つ巴"
+    ],
+    "grid": null
+   },
+   {
+    "name": "紅花 EP.18 フェルディアの戦い",
+    "part": "第二部",
+    "size": "30×30",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "広い燃える床（毎ターン15%、移動も重い）。5ターンごとに敵が強くなる。動かない敵を倒すと増援。ボスは3×3マスの大型",
+    "strategy": "右・中央右・中央の3ルート。敵を無視してボスへ急ぐか",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "ダメージ床",
+     "2本以上の道"
+    ],
+    "grid": null
+   },
+   {
+    "name": "銀雪 EP.18 アンヴァル潜入戦",
+    "part": "第二部",
+    "size": "約26×33",
+    "deploy": "10人",
+    "clear": "敵将2人撃破",
+    "features": "3ターン目に上から飛行増援、6ターン目に右下から。砲台で範囲外から撃つと不動のボスが動く。片方のボスを倒すともう片方が動く",
+    "strategy": "右へ進んで味方と合流してから増援を処理",
+    "freedom": "中",
+    "difficulty": "高",
+    "patterns": [
+     "連動"
+    ],
+    "grid": null
+   },
+   {
+    "name": "銀雪 EP.19 アンヴァル宮城戦",
+    "part": "第二部",
+    "size": "25×32",
+    "deploy": "10人",
+    "clear": "ボス撃破",
+    "features": "玉座の間の入口3か所に鍵のかかった扉。鍵は3人の敵が持つ。部屋どうしが連動。周りを倒さず玉座に入ると全員突撃",
+    "strategy": "どの鍵を取りに行くか。階段をふさいで増援を止める",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "連動",
+     "止められる増援"
+    ],
+    "grid": null
+   },
+   {
+    "name": "銀雪 EP.20 シャンバラの戦い",
+    "part": "第二部",
+    "size": "27×27",
+    "deploy": "11人",
+    "clear": "ボス撃破",
+    "features": "隠し部屋3つ。左上の中ボスで無限増援が止まり、右下の中ボスで砲台が止まる。下の階で待つと無限増援。10ターンまでに宝箱を開けないと盗賊が出る",
+    "strategy": "階段の上で迎え撃つ、中ボスを先に倒す、壁越しに撃つ、ワープで急襲",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "止められる増援",
+     "解けば楽になる装置",
+     "逃げる敵・奪う敵"
+    ],
+    "grid": null
+   },
+   {
+    "name": "銀雪 EP.21 最後の戦い",
+    "part": "第二部",
+    "size": "25×32",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "南端の回復床＝増援の出口（隣に立つと止まる）。ボスは近くに取り巻きが残ると毎ターン全回復",
+    "strategy": "取り巻きを全部倒してからボス。下から少しずつ釣る",
+    "freedom": "中",
+    "difficulty": "高",
+    "patterns": [
+     "止められる増援",
+     "待つ敵を釣る"
+    ],
+    "grid": null
+   },
+   {
+    "name": "翠風 EP.22 フォドラ解放戦",
+    "part": "第二部",
+    "size": "30×25",
+    "deploy": "12人",
+    "clear": "ボス撃破",
+    "features": "毒沼（毎ターン10%）を上側の中ボスを倒すと消せる。出撃地点が敵の砲台の範囲内。ボスは配下をほぼ倒すと強化が消える",
+    "strategy": "毒沼をいつ消すか、増援の呼び手を倒すか放置か",
+    "freedom": "高",
+    "difficulty": "高",
+    "patterns": [
+     "解けば楽になる装置",
+     "ダメージ床"
+    ],
+    "grid": null
+   }
+  ],
+  "file": "fe16_風花雪月.json"
+ }
+];
+/*REFS-END*/
 
 // ================================================================ 一覧（ゲームの定義）
 const PAL_KEY = "srpgMapMaker.palette", MAPS_KEY = "srpgMapMaker.maps", CUR_KEY = "srpgMapMaker.current", HOT_KEY = "srpgMapMaker.hotbar";
@@ -1781,6 +2323,88 @@ $("fBak").onchange = async e => {
     saveAll(); if (maps[curId]) openMap(curId); refreshMapList();
     toast(`戻しました（増えた ${added}・新しくなった ${newer}）`);
   } catch (x) { toast("このページのバックアップとして読めませんでした"); }
+};
+
+// ================================================================ 参考マップ（ほかの作品のマップを、作品ごとに見る。研究用）
+// データは上の REF_GAMES（build_refs.py が「1作品＝1ファイル」の JSON から入れる）と、この端末で読んだファイル（REFS_KEY）。
+// grid（マス目）があれば図を出し、「下書きにする」で研究用のマップとして開ける（敵の配置を上に置ける）
+const REFS_KEY = "srpgMapMaker.refs";
+let refLocal = []; try { refLocal = JSON.parse(LS.get(REFS_KEY) || "[]"); } catch (e) { refLocal = []; }
+const refGames = () => { const all = [...REF_GAMES]; for (const g of refLocal) { const i = all.findIndex(x => x.id === g.id); if (i >= 0) all[i] = g; else all.push(g); } return all; };
+let refState = { game: "", tag: "", part: "" };
+const LEVEL_COLOR = { "低": "#7fd88f", "中": "#f0b44c", "高": "#ff7a7a" };
+function openRefs() {
+  const games = refGames();
+  if (!games.find(g => g.id === refState.game)) refState = { game: games[0] ? games[0].id : "", tag: "", part: "" };
+  const g = games.find(x => x.id === refState.game);
+  const chips = (el, list, cur, set, allLabel) => { el.innerHTML = ""; for (const [v, label] of [["", allLabel], ...list]) { if (v === "" && !allLabel) continue; const b = document.createElement("button"); b.textContent = label; b.className = v === cur ? "on" : ""; b.onclick = () => { set(v); openRefs(); }; el.appendChild(b); } };
+  chips($("refGames"), games.map(x => [x.id, x.short || x.game]), refState.game, v => { refState = { game: v, tag: "", part: "" }; }, null);
+  const L = $("refList"); L.innerHTML = "";
+  if (!g) { $("refTags").innerHTML = ""; $("refParts").innerHTML = ""; L.innerHTML = `<div class="muted" style="margin:10px 0">参考マップがありません。下の「ファイルを読む」で作品の .json を入れられます。</div>`; openSheet("sRefs"); return; }
+  const count = {}; for (const m of g.maps) for (const t of m.patterns || []) count[t] = (count[t] || 0) + 1;
+  chips($("refTags"), Object.entries(count).sort((a, b) => b[1] - a[1]).map(([t, n]) => [t, `${t} ${n}`]), refState.tag, v => { refState.tag = v; }, "型：全部");
+  const parts = [...new Set(g.maps.map(m => m.part).filter(x => x))];
+  chips($("refParts"), parts.map(p => [p, p]), refState.part, v => { refState.part = v; }, parts.length > 1 ? "全部" : null);
+  $("refNote").textContent = [g.game, g.source ? "出典：" + g.source : "", g.note || ""].filter(x => x).join("　");
+  const shown = g.maps.filter(m => (!refState.tag || (m.patterns || []).includes(refState.tag)) && (!refState.part || m.part === refState.part));
+  for (const m of shown) {
+    const b = document.createElement("button"); b.className = "card"; b.style.cssText = "display:block;width:100%;text-align:left";
+    const lv = (k, v) => v ? `<span style="color:${LEVEL_COLOR[v] || "var(--sub)"}">${k}${esc(v)}</span>` : "";
+    b.innerHTML = `<div class="row" style="margin:0"><b style="flex:1">${esc(m.name)}</b>${m.grid ? '<span class="okmsg" style="flex:0 0 auto">▦ マス目</span>' : ""}</div>
+      <div class="muted">${[m.part, m.size, m.deploy ? "出撃" + m.deploy : "", m.clear].filter(x => x).map(esc).join("・")}　${lv("自由度", m.freedom)} ${lv("難しさ", m.difficulty)}</div>
+      <div class="muted" style="color:#cfd6e0">${esc(m.features || "")}</div>
+      <div class="chips" style="margin-top:4px">${(m.patterns || []).map(t => `<span style="font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:10px">${esc(t)}</span>`).join("")}</div>`;
+    b.onclick = () => openRefDetail(g, m);
+    L.appendChild(b);
+  }
+  if (!shown.length) L.innerHTML = `<div class="muted" style="margin:10px 0">合うマップがありません。</div>`;
+  openSheet("sRefs");
+}
+// マス目の記号 → このゲームの地形。legend の意味に地形の名前が入っていればそれ、なければ記号が同じ地形、どちらもなければ平地
+function refTerrainOf(sym, legend) {
+  const mean = (legend || {})[sym] || "";
+  const byName = PAL.terrains.filter(t => mean.includes(t.name)).sort((a, b) => b.name.length - a.name.length)[0];
+  return byName ? byName.s : terrainBy(sym) ? sym : ".";
+}
+function refGridPreview(grid, px) {
+  const rows = grid.terrain.map(r => [...r]), h = rows.length, w = Math.max(...rows.map(r => r.length));
+  const k = document.createElement("canvas"), d = devicePixelRatio || 1; k.width = w * px * d; k.height = h * px * d; k.style.width = w * px + "px"; k.style.height = h * px + "px"; k.style.maxWidth = "100%";
+  const g = k.getContext("2d"); g.scale(d, d);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = rows[y][x] || "."; const t = terrainBy(refTerrainOf(s, grid.legend)); g.fillStyle = t ? t.color : "#777"; g.fillRect(x * px, y * px, px, px);
+    if (px >= 9 && !terrainBy(s)) { g.fillStyle = "rgba(0,0,0,.6)"; g.font = `${px * 0.7}px monospace`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x * px + px / 2, y * px + px / 2); } }
+  return k;
+}
+function openRefDetail(g, m) {
+  $("refTitle").textContent = m.name;
+  const rows = [["作品", g.game], ["部", m.part], ["大きさ", m.size], ["出撃", m.deploy], ["勝ち方", m.clear], ["特徴", m.features], ["取れる戦略", m.strategy], ["自由度", m.freedom], ["難しさ", m.difficulty], ["型", (m.patterns || []).join("、")]];
+  for (const [k, v] of Object.entries(m)) if (!["name", "part", "size", "deploy", "clear", "features", "strategy", "freedom", "difficulty", "patterns", "grid"].includes(k) && (typeof v === "string" || typeof v === "number")) rows.push([k, v]);
+  const B = $("refBody"); B.innerHTML = rows.filter(r => r[1] !== "" && r[1] != null).map(([k, v]) => `<div class="stat"><b>${esc(k)}</b><span style="text-align:left;flex:1;margin-left:12px">${esc(v)}</span></div>`).join("");
+  if (m.grid && m.grid.terrain && m.grid.terrain.length) {
+    const h3 = document.createElement("h3"); h3.textContent = "マス目（上が奥・敵側）"; B.appendChild(h3);
+    B.appendChild(refGridPreview(m.grid, Math.max(5, Math.min(14, Math.floor(320 / Math.max(...m.grid.terrain.map(r => [...r].length)))))));
+    if (m.grid.legend) { const lg = document.createElement("div"); lg.className = "muted"; lg.textContent = Object.entries(m.grid.legend).map(([s, v]) => `${s}＝${v}`).join("　"); B.appendChild(lg); }
+    const bt = document.createElement("button"); bt.className = "on"; bt.style.cssText = "width:100%;margin-top:10px"; bt.textContent = "このマス目で研究用の下書きを作る（敵を置いてみる）";
+    bt.onclick = () => {
+      const rs = m.grid.terrain.map(r => [...r]), h = rs.length, w = Math.max(...rs.map(r => r.length));
+      const mm = blankMap(`研究：${g.short || g.game} ${m.name}`, w, h, ".");
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) mm.terrain[y][x] = refTerrainOf(rs[y][x] || ".", m.grid.legend);
+      mm.note = `研究用（${g.game}「${m.name}」の並び）。ゲームには入れない`;
+      mm.objective = PAL.objectives.includes(m.clear) ? m.clear : "";
+      saveNow(); addMap(mm); closeSheets(); setLayerTo("place"); toast("下書きを作りました。配置で敵を置けます");
+    };
+    B.appendChild(bt);
+  } else B.innerHTML += `<div class="muted" style="margin-top:10px">マス目はまだありません（入ると、ここに図と「下書きを作る」が出ます）。</div>`;
+  $("refBack").onclick = () => openRefs();
+  openSheet("sRefDetail");
+}
+function setLayerTo(l) { const b = document.querySelector(`[data-layer="${l}"]`); if (b) b.click(); }
+$("bRefs").onclick = openRefs;
+$("bRefLoad").onclick = () => $("fRef").click();
+$("fRef").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { const g = JSON.parse(await f.text()); if (!g || !Array.isArray(g.maps)) throw 0; g.id = g.id || f.name.replace(/\.json$/i, ""); g.file = f.name;
+    refLocal = refLocal.filter(x => x.id !== g.id).concat([g]); LS.set(REFS_KEY, JSON.stringify(refLocal)); refState.game = g.id; openRefs(); toast(`「${g.short || g.game || g.id}」を入れました（${g.maps.length}枚）`); }
+  catch (x) { toast("参考マップの .json として読めませんでした"); }
 };
 
 // ================================================================ 画面の更新
