@@ -570,9 +570,9 @@ function resizeCanvas() {
 function fitView() {
   if (!map) return;
   const r = stage.getBoundingClientRect();
-  const M = 22; // 端の番号（マス目）の分
-  view.s = Math.max(8, Math.min(64, Math.floor(Math.min((r.width - 16 - M) / map.w, (r.height - 30 - M) / map.h))));
-  view.ox = (r.width - view.s * map.w + M) / 2; view.oy = (r.height - view.s * map.h + M) / 2 + 8; draw();
+  const M = 22; // 端の番号（マス目）の分。上下左右に1本ずつ
+  view.s = Math.max(8, Math.min(64, Math.floor(Math.min((r.width - 8 - 2 * M) / map.w, (r.height - 30 - 2 * M) / map.h))));
+  view.ox = (r.width - view.s * map.w) / 2; view.oy = (r.height - view.s * map.h) / 2; draw();
 }
 function shade(hex, k) {
   const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
@@ -657,17 +657,27 @@ function draw() {
   }
 }
 
-// 端の番号（チェスの盤のように）：上に横の番号、左に縦の番号。マップを動かして端が見えなくなっても、画面の端に残る
+// 端の番号（チェスの盤のように）：上と下に横の番号、左と右に縦の番号。マップを動かして端が見えなくなっても、画面の端に残る
 function drawRulers(r) {
   const s = view.s, fsz = Math.max(9, Math.min(14, Math.floor(s * 0.42))), band = fsz + 8;
   const every = s >= 14 ? 1 : s >= 8 ? 2 : 5; // 小さいときは間引く
-  const ty = Math.max(band / 2, view.oy - band / 2), lx = Math.max(band / 2 + 4, view.ox - band / 2 - 2);
-  ctx.font = `bold ${fsz}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  if (view.oy - band < 0) { ctx.fillStyle = "rgba(17,20,24,.85)"; ctx.fillRect(view.ox, 0, map.w * s, band); }
-  if (view.ox - band < 0) { ctx.fillStyle = "rgba(17,20,24,.85)"; ctx.fillRect(0, view.oy, band + 6, map.h * s); }
-  ctx.fillStyle = "#cfd6e0";
-  for (let x = 0; x < map.w; x++) if ((x + 1) % every === 0 || x === 0) { const cx = view.ox + (x + .5) * s; if (cx > -s && cx < r.width + s) ctx.fillText(x + 1, cx, ty); }
-  for (let y = 0; y < map.h; y++) if ((y + 1) % every === 0 || y === 0) { const cy = view.oy + (y + .5) * s; if (cy > -s && cy < r.height + s) ctx.fillText(y + 1, lx, cy); }
+  const mw = map.w * s, mh = map.h * s;
+  const topY = Math.max(band / 2, view.oy - band / 2), botY = Math.min(r.height - band / 2, view.oy + mh + band / 2);
+  const leftX = Math.max(band / 2 + 4, view.ox - band / 2 - 2), rightX = Math.min(r.width - band / 2 - 4, view.ox + mw + band / 2 + 2);
+  ctx.fillStyle = "rgba(17,20,24,.85)"; // 番号がマップの上に重なるときは、下に帯を敷く
+  if (view.oy - band < 0) ctx.fillRect(view.ox, 0, mw, band);
+  if (view.oy + mh + band > r.height) ctx.fillRect(view.ox, r.height - band, mw, band);
+  if (view.ox - band < 0) ctx.fillRect(0, view.oy, band + 6, mh);
+  if (view.ox + mw + band > r.width) ctx.fillRect(r.width - band - 6, view.oy, band + 6, mh);
+  ctx.font = `bold ${fsz}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#cfd6e0";
+  for (let x = 0; x < map.w; x++) if ((x + 1) % every === 0 || x === 0) {
+    const cx = view.ox + (x + .5) * s; if (cx < -s || cx > r.width + s) continue;
+    ctx.fillText(x + 1, cx, topY); ctx.fillText(x + 1, cx, botY);
+  }
+  for (let y = 0; y < map.h; y++) if ((y + 1) % every === 0 || y === 0) {
+    const cy = view.oy + (y + .5) * s; if (cy < -s || cy > r.height + s) continue;
+    ctx.fillText(y + 1, leftX, cy); ctx.fillText(y + 1, rightX, cy);
+  }
 }
 
 // ================================================================ 塗る
