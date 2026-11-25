@@ -1331,6 +1331,7 @@ function cloudPutPalette(p) { if (cloud.db && cloud.ready) cloud.db.doc("config/
       const j = d.exists && d.data().json; if (!j) return;
       try { const p = JSON.parse(j); if (p && p.terrains) { PAL = p; LS.set(PAL_KEY, j); refreshAll(); } } catch (e) {}
     }).catch(() => {});
+    db.doc("config/refLegend").get().then(d => { const j = d.exists && d.data().json; if (!j) return; try { refOvAll = JSON.parse(j); LS.set(REFOV_KEY, j); } catch (e) {} }).catch(() => {});
     db.collection("maps").onSnapshot(snap => {
       if (snap.metadata.fromCache) return;
       clearTimeout(timer);
@@ -1859,11 +1860,10 @@ function refCaseGrid(c, px) {
   const k = document.createElement("canvas"), d = devicePixelRatio || 1; k.width = w * px * d; k.height = h * px * d; k.style.width = w * px + "px"; k.style.height = h * px + "px"; k.style.maxWidth = "100%";
   const g = k.getContext("2d"); g.scale(d, d);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const s = rows[y][x] ?? " ", pc = c.pieces[s];
-    const tr = pc !== undefined ? null : refRule(REF_TERRAIN_RULES, c.legend[s]);
-    g.fillStyle = tr ? tr[1] : pc !== undefined ? "#8fc261" : "#777"; g.fillRect(x * px, y * px, px, px);
-    if (pc !== undefined) { const pr = refRule(REF_PIECE_RULES, pc); g.beginPath(); g.arc(x * px + px / 2, y * px + px / 2, px * 0.42, 0, Math.PI * 2); g.fillStyle = pr[1]; g.fill(); if (px >= 9) { g.fillStyle = pr[1] === "#f2efe6" ? "#222" : "#fff"; g.font = `bold ${px * 0.62}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x * px + px / 2, y * px + px / 2 + 1); } }
-    else if (!tr && px >= 9) { g.fillStyle = "#fff"; g.font = `${px * 0.6}px monospace`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x * px + px / 2, y * px + px / 2); }
+    const s = rows[y][x] ?? " ", v = refSym(c, s);
+    g.fillStyle = v.piece ? "#8fc261" : v.color; g.fillRect(x * px, y * px, px, px);
+    if (v.piece) { g.beginPath(); g.arc(x * px + px / 2, y * px + px / 2, px * 0.42, 0, Math.PI * 2); g.fillStyle = v.color; g.fill(); if (px >= 9) { g.fillStyle = v.color === "#f2efe6" ? "#222" : "#fff"; g.font = `bold ${px * 0.62}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x * px + px / 2, y * px + px / 2 + 1); } }
+    else if (v.unknown && px >= 9) { g.fillStyle = "#fff"; g.font = `${px * 0.6}px monospace`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x * px + px / 2, y * px + px / 2); }
   }
   g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 1; g.beginPath(); for (let x = 0; x <= w; x++) { g.moveTo(x * px + .5, 0); g.lineTo(x * px + .5, h * px); } for (let y = 0; y <= h; y++) { g.moveTo(0, y * px + .5); g.lineTo(w * px, y * px + .5); } g.stroke();
   return k;
@@ -1872,9 +1872,9 @@ function refDraft(gname, title, c) {
   const rows = c.grid.map(r => [...r]), h = rows.length, w = Math.max(...rows.map(r => r.length));
   const mm = blankMap(`研究：${gname} ${title}`, Math.min(60, w), Math.min(60, h), ".");
   for (let y = 0; y < mm.h; y++) for (let x = 0; x < mm.w; x++) {
-    const s = rows[y][x] ?? " ", pc = c.pieces[s];
-    if (pc !== undefined) { const pr = refRule(REF_PIECE_RULES, pc); mm.place[y][x] = pr[2]; continue; }
-    const tr = refRule(REF_TERRAIN_RULES, c.legend[s]); mm.terrain[y][x] = tr && terrainBy(tr[2]) ? tr[2] : ".";
+    const v = refSym(c, rows[y][x] ?? " ");
+    if (v.piece) { mm.place[y][x] = v.place; continue; }
+    mm.terrain[y][x] = terrainBy(v.terrain) ? v.terrain : ".";
   }
   mm.note = `研究用（${gname}「${title}」の並び）。ゲームには入れない`;
   saveNow(); addMap(mm); closeSheets(); setLayerTo("place"); toast("下書きを作りました。配置で敵を置き直せます");
@@ -1928,7 +1928,7 @@ function openRefs() {
   if (!shown.length) L.innerHTML += `<div class="muted" style="margin:10px 0">合うマップがありません。</div>`;
   openSheet("sRefs");
 }
-function openRefDoc(title, md) { $("refTitle").textContent = title; $("refBody").innerHTML = mdHtml(md, false); $("refBack").onclick = () => openRefs(); openSheet("sRefDetail"); $("sRefDetail").querySelector(".box").scrollTop = 0; }
+function openRefDoc(title, md) { $("refTitle").textContent = title; $("refBody").innerHTML = mdHtml(md, false); $("refBack").textContent = "← 一覧"; $("refBack").onclick = () => openRefs(); openSheet("sRefDetail"); $("sRefDetail").querySelector(".box").scrollTop = 0; }
 function openRefDetail(e, m) {
   $("refTitle").textContent = m.name;
   const B = $("refBody"); B.innerHTML = "";
@@ -1940,15 +1940,77 @@ function openRefDetail(e, m) {
     const w = Math.max(...c.grid.map(r => [...r].length));
     B.appendChild(refCaseGrid(c, Math.max(6, Math.min(16, Math.floor(340 / w)))));
     const lg = document.createElement("div"); lg.className = "muted";
-    lg.textContent = [...Object.entries(c.legend).map(([s, v]) => `${s === " " ? "空白" : s}＝${v}`), ...Object.entries(c.pieces).map(([s, v]) => `●${s}＝${v}`)].join("　"); B.appendChild(lg);
+    lg.textContent = refCaseSymbols(c).map(s => { const v = refSym(c, s); return `${v.piece ? "●" : ""}${s === " " ? "空白" : s}＝${v.mean || "?"}`; }).join("　"); B.appendChild(lg);
+    const ed = document.createElement("button"); ed.className = "small"; ed.style.cssText = "width:100%;margin-top:6px"; ed.textContent = (refOvAll[c.game] || refOvAll[c.game + "/" + c.file]) ? "✎ 凡例を直す（直したものを使っています）" : "✎ 凡例を直す";
+    ed.onclick = () => openRefLegendEdit(e, m); B.appendChild(ed);
     const bt = document.createElement("button"); bt.className = "on"; bt.style.cssText = "width:100%;margin-top:10px"; bt.textContent = "このマス目で研究用の下書きを作る";
     bt.onclick = () => refDraft(e.name, m.name, c); B.appendChild(bt);
   }
   if (c) { const d = document.createElement("div"); d.innerHTML = mdHtml(c.md, true); B.appendChild(d); }
   else if (!rows.length) B.innerHTML = `<div class="muted">まだ中身がありません。</div>`;
   else B.innerHTML += `<div class="muted" style="margin-top:10px">判例（マス目・駒・攻略）はまだありません。</div>`;
-  $("refBack").onclick = () => openRefs();
+  $("refBack").textContent = "← 一覧"; $("refBack").onclick = () => openRefs();
   openSheet("sRefDetail"); $("sRefDetail").querySelector(".box").scrollTop = 0;
+}
+// ---- 凡例の直し：記号ごとに「意味の文」と「何として見るか（地形・駒）」を上書きする。
+// 作品全体（キー＝作品）か、そのマップだけ（キー＝作品/ファイル）。この端末に保存し、Claudeのページではデータ（config/refLegend）にも置く
+const REFOV_KEY = "srpgMapMaker.refLegend";
+let refOvAll = {}; try { refOvAll = JSON.parse(LS.get(REFOV_KEY) || "{}"); } catch (e) { refOvAll = {}; }
+const REF_PIECE_KINDS = ["敵", "ボス", "自軍", "友軍", "第三軍", "増援", "宝箱・イベント"];
+function refOv(c) {
+  const g = refOvAll[c.game] || {}, f = refOvAll[c.game + "/" + c.file] || {};
+  return { legend: { ...(g.legend || {}), ...(f.legend || {}) }, kind: { ...(g.kind || {}), ...(f.kind || {}) } };
+}
+// 記号1つを、どう見せるか（色・駒か・下書きで何にするか）
+function refSym(c, s) {
+  const ov = refOv(c), isPiece0 = c.pieces[s] !== undefined;
+  const mean = ov.legend[s] ?? (isPiece0 ? c.pieces[s] : c.legend[s]);
+  const kind = ov.kind[s] || "";
+  if (kind.startsWith("p:") || (!kind && isPiece0)) { const lab = kind ? kind.slice(2) : mean; const pr = refRule(REF_PIECE_RULES, lab); return { piece: true, color: pr[1], place: pr[2], mean, kind }; }
+  if (kind.startsWith("t:")) { const t = terrainBy(kind.slice(2)); return { piece: false, color: t ? t.color : "#777", terrain: kind.slice(2), mean, kind }; }
+  const tr = refRule(REF_TERRAIN_RULES, mean); return { piece: false, color: tr ? tr[1] : "#777", terrain: tr ? tr[2] : ".", mean, kind, unknown: !tr };
+}
+function saveRefOv() { LS.set(REFOV_KEY, JSON.stringify(refOvAll)); if (cloud.db && cloud.ready) cloud.db.doc("config/refLegend").set({ json: JSON.stringify(refOvAll), updated: Date.now() }).catch(() => {}); }
+function refCaseSymbols(c) { const set = new Set(); for (const r of c.grid || []) for (const ch of r) set.add(ch); for (const k of Object.keys(c.legend)) set.add(k); for (const k of Object.keys(c.pieces)) set.add(k); return [...set]; }
+function openRefLegendEdit(e, m) {
+  const c = m.case, B = $("refBody"); $("refTitle").textContent = `凡例を直す：${m.name}`;
+  const count = {}; for (const r of c.grid || []) for (const ch of r) count[ch] = (count[ch] || 0) + 1;
+  const syms = refCaseSymbols(c).sort((a, b) => (count[b] || 0) - (count[a] || 0));
+  const kindOpts = cur => [["", "自動（意味の文から）"], ...PAL.terrains.map(t => ["t:" + t.s, `地形：${t.name}`]), ...REF_PIECE_KINDS.map(k => ["p:" + k, `駒：${k}`])]
+    .map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const hasFileOv = !!refOvAll[c.game + "/" + c.file];
+  B.innerHTML = `<div class="muted">記号ごとに、意味の文と「何として見るか」を直せます。直すと図の色と「下書き」の中身が変わります（元のデータのファイルは変えません）。</div>
+    <label style="display:flex;align-items:center;margin-top:10px"><input type="checkbox" id="rlAll" ${hasFileOv ? "" : "checked"}>${esc(e.name)} の全部のマップに使う（外すとこのマップだけ）</label>
+    <div id="rlRows"></div>
+    <div class="row" style="margin-top:12px"><button id="rlReset" class="danger">元に戻す</button><button id="rlSave" class="on">決める</button></div>
+    <button id="rlCopy" class="small" style="width:100%;margin-top:8px">直した凡例をコピー（データの .md の「- 記号：」「- 駒：」の行の形）</button>`;
+  const R = $("rlRows");
+  for (const s of syms) {
+    const v = refSym(c, s), d = document.createElement("div"); d.className = "card"; d.dataset.sym = s;
+    d.innerHTML = `<div class="row" style="margin:0"><div style="flex:0 0 34px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:bold;background:${v.color};color:#fff;text-shadow:0 0 2px #000;${v.piece ? "border-radius:50%" : ""}">${esc(s === " " ? "空" : s)}</div>
+      <input class="rlMean" value="${esc(v.mean || "")}" placeholder="意味（例：森・茂み）"><span class="muted" style="flex:0 0 auto">${count[s] || 0}マス</span></div>
+      <select class="rlKind" style="margin-top:6px">${kindOpts(v.kind)}</select>`;
+    R.appendChild(d);
+  }
+  const collect = () => { const legend = {}, kind = {}; for (const d of R.children) { const s = d.dataset.sym, mean = d.querySelector(".rlMean").value.trim(), k = d.querySelector(".rlKind").value; const orig = c.pieces[s] !== undefined ? c.pieces[s] : c.legend[s]; if (mean && mean !== orig) legend[s] = mean; if (k) kind[s] = k; } return { legend, kind }; };
+  $("rlSave").onclick = () => {
+    const ov = collect(), all = $("rlAll").checked, key = all ? c.game : c.game + "/" + c.file;
+    if (all) delete refOvAll[c.game + "/" + c.file];
+    if (Object.keys(ov.legend).length || Object.keys(ov.kind).length) refOvAll[key] = ov; else delete refOvAll[key];
+    saveRefOv(); toast(all ? `${e.name} の全部のマップの凡例を直しました` : "このマップの凡例を直しました"); openRefDetail(e, m);
+  };
+  $("rlReset").onclick = () => { delete refOvAll[c.game + "/" + c.file]; if ($("rlAll").checked) delete refOvAll[c.game]; saveRefOv(); toast("元の凡例に戻しました"); openRefDetail(e, m); };
+  $("rlCopy").onclick = async () => {
+    const ov = collect(), t = [], p = [];
+    for (const d of R.children) { const s = d.dataset.sym, mean = d.querySelector(".rlMean").value.trim() || "?", k = ov.kind[s] || "";
+      const piece = k ? k.startsWith("p:") : c.pieces[s] !== undefined; const name = s === " " ? "空白" : "`" + s + "`";
+      const extra = k.startsWith("t:") ? `（地形：${(terrainBy(k.slice(2)) || { name: k.slice(2) }).name}）` : k.startsWith("p:") && !mean.includes(k.slice(2)) ? `（${k.slice(2)}）` : "";
+      (piece ? p : t).push(`${name} ${mean}${extra}`); }
+    const text = `- 記号：${t.join("／")}\n- 駒：${p.join("／")}`;
+    try { await navigator.clipboard.writeText(text); toast("コピーしました"); } catch (x) { prompt("コピーしてください", text); }
+  };
+  $("refBack").textContent = "← 戻る"; $("refBack").onclick = () => openRefDetail(e, m);
+  $("sRefDetail").querySelector(".box").scrollTop = 0;
 }
 function setLayerTo(l) { const b = document.querySelector(`[data-layer="${l}"]`); if (b) b.click(); }
 $("bRefs").onclick = openRefs;
